@@ -1,25 +1,25 @@
-     import streamlit as st
-     import yfinance as yf
-     import pandas as pd
-     import pandas_datareader.data as web
-     from datetime import datetime, timedelta
-     import plotly.express as px
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import pandas_datareader.data as web
+from datetime import datetime, timedelta
+import plotly.express as px
 
-     # --- CONFIGURATION ---
-     st.set_page_config(page_title="DCA Portfolio Dashboard", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="DCA Portfolio Dashboard", layout="wide")
 
-     # Liste des ETF
-     etfs = {
-         'SP500': 'SPY',
-         'NASDAQ100': 'QQQ',
-         'CAC40': 'CAC.PA',
-         'EURO STOXX50': 'FEZ',
-         'EURO STOXX600 TECH': 'EXV3.DE',
-         'WORLD': 'VT',
-         'EMERGING': 'EEM'
-     }
+# Liste des ETF
+etfs = {
+    'SP500': 'SPY',
+    'NASDAQ100': 'QQQ',
+    'CAC40': 'CAC.PA',
+    'EURO STOXX50': 'FEZ',
+    'EURO STOXX600 TECH': 'EXV3.DE',
+    'WORLD': 'VT',
+    'EMERGING': 'EEM'
+}
 
-     # Périodes pour détection de point bas (en jours)
+# Périodes pour détection de point bas (en jours)
      timeframes = {
          'Hebdo (5j)': 5,
          'Mensuel (21j)': 21,
