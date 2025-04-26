@@ -135,23 +135,36 @@ thresholds = st.sidebar.multiselect(
 # --- AFFICHAGE PRINCIPAL ---
 cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
+    # Calcul des variations et style
     delta = deltas[name]
+    perf_color = "green" if delta >= 0 else "crimson"
+    # Valeur du jour
     last_price = series.iloc[-1] if len(series) else None
     price_str = f"{last_price:.2f} USD" if last_price is not None else "N/A"
+    # Compte de périodes vertes
     gc = green_counts[name]
-    border = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
-    # Construction du HTML complet de la carte
+    border_color = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
+
+    # Préparation du graphique HTML
     fig = px.line(series, height=120)
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False)
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False)
 
     # Badges DCA
-    badges = "".join(
-        f"<span title='Moyenne {lbl}: {series.iloc[-w:].mean():.2f}'"
-        f" style='background:{'green' if series.iloc[-1]<series.iloc[-w:].mean() else 'crimson'};"
-        "color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
-        for lbl, w in timeframes.items()
-    )
+    badges_list = []
+    for lbl, w in timeframes.items():
+        if len(series) >= w:
+            avg = series.iloc[-w:].mean()
+            bg = "green" if series.iloc[-1] < avg else "crimson"
+            title = f"Moyenne {lbl}: {avg:.2f}"
+        else:
+            bg = "crimson"
+            title = ""
+        badges_list.append(
+            f"<span title='{title}' style='background:{bg};color:white;"
+            "padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+        )
+    badges_html = "".join(badges_list)
 
     # Indicateurs macro en deux colonnes
     items = []
@@ -161,25 +174,29 @@ for idx, (name, series) in enumerate(price_df.items()):
             items.append(f"<li>{lbl}: {val:.2f}</li>")
         else:
             items.append(f"<li>{lbl}: N/A</li>")
-    half = len(items)//2 + len(items)%2
-    col1, col2 = ''.join(items[:half]), ''.join(items[half:])
+    half = len(items) // 2 + len(items) % 2
+    left, right = ''.join(items[:half]), ''.join(items[half:])
 
+    # Construction du fragment HTML complet
     card_html = f"""
-    <div style='border:3px solid {border};border-radius:12px;padding:16px;margin:10px;background-color:white;max-height:380px;overflow:auto;'>
-      <h4 style='margin:4px 0'>{name}: {price_str} <span style='color:{'green' if delta>=0 else 'crimson'}'>{delta:+.2f}%</span></h4>
+    <div style='border:3px solid {border_color};border-radius:12px;padding:16px;margin:10px;"
+    f"background-color:white;max-height:380px;overflow:auto;'>
+      <h4 style='margin:4px 0'>{name}: {price_str} "
+      f"<span style='color:{perf_color}'>{delta:+.2f}%</span></h4>
       {fig_html}
-      <div style='margin-top:8px;display:flex;gap:4px;'>{badges}</div>
-      <div style='text-align:right;font-size:13px;margin-top:6px;'>Surpondération: <span style='color:#1f77b4'>{'🔵'*gc}</span></div>
+      <div style='margin-top:8px;display:flex;gap:4px;'>{badges_html}</div>
+      <div style='text-align:right;font-size:13px;margin-top:6px;'>"
+      f"Surpondération: <span style='color:#1f77b4'>{'🔵' * gc}</span></div>
       <div style='display:flex;gap:20px;margin-top:8px;font-size:12px;'>
-        <ul style='margin:0;padding-left:16px'>{col1}</ul>
-        <ul style='margin:0;padding-left:16px'>{col2}</ul>
+        <ul style='margin:0;padding-left:16px'>{left}</ul>
+        <ul style='margin:0;padding-left:16px'>{right}</ul>
       </div>
     </div>
     """
     with cols[idx % 2]:
         html(card_html, height=420)
 
-    # Alerte arbitrage central après deux cartes
+    # Alertes d'arbitrage entre indices (après chaque paire)
     if idx % 2 == 1 and thresholds:
         for t in sorted(thresholds, reverse=True):
             pairs = [(i, j, abs(deltas[i] - deltas[j])) for i in deltas for j in deltas if i < j and abs(deltas[i] - deltas[j]) > t]
