@@ -11,10 +11,7 @@ st.set_page_config(page_title="Dashboard DCA ETF", layout="wide")
 
 # --- CONSTANTES ---
 etfs = {
-    'S&P500': 'SPY',
-    'NASDAQ100': 'QQQ',
-    'CAC40': 'CAC.PA',
-    'EURO STOXX50': 'FEZ',
+    'S&P500': 'SPY', 'NASDAQ100': 'QQQ', 'CAC40': 'CAC.PA', 'EURO STOXX50': 'FEZ',
     'EURO STOXX600 TECH': 'EXV3.DE',
     'NIKKEI 225': '^N225',
     'WORLD': 'VT',
@@ -152,24 +149,10 @@ for idx, (name, series) in enumerate(price_df.items()):
                 color_bg = 'crimson'
                 title = f"Pas assez de données pour {lbl}"
             badges.append(
-                f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+                f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;" 
+                f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
             )
     badges_html = ''.join(badges)
-
-    # Macro indicators two columns
-    badges_html = ""
-    if last is not None:
-        badge_list = []
-        for lbl, w in timeframes.items():
-            if len(series) >= w:
-                avg = series.iloc[-w:].mean()
-                bg = "green" if last < avg else "crimson"
-                title = f"Moyenne {lbl}: {avg:.2f}"
-                badge_list.append(
-                    f"<span title='{title}' style='background:{bg};color:white;padding:3px 6px;"
-                    f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
-                )
-        badges_html = "".join(badge_list)
 
     # Macro indicators two columns
     items = []
@@ -180,8 +163,8 @@ for idx, (name, series) in enumerate(price_df.items()):
         else:
             items.append(f"<li>{lbl}: N/A</li>")
     half = len(items)//2 + len(items)%2
-    left_html = "".join(items[:half])
-    right_html = "".join(items[half:])
+    left_html = ''.join(items[:half])
+    right_html = ''.join(items[half:]) "".join(items[half:])
 
     # Assemble card HTML
     card_html = f'''
