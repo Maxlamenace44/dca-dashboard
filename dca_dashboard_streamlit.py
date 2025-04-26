@@ -102,7 +102,8 @@ except Exception:
 st.sidebar.header("Seuils arbitrage")
 thresholds = st.sidebar.multiselect("Choisir seuils (%)", [5,10,15,20,25], default=[5,10,15])
 
-# Main display\ ncols = st.columns(2)
+# --- AFFICHAGE PRINCIPAL ---
+cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
     delta = deltas[name]
     perf_color = "green" if delta >= 0 else "crimson"
