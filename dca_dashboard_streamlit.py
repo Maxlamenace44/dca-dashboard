@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 from fredapi import Fred
+from streamlit.components.v1 import html
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="DCA Portfolio Dashboard", layout="wide")
@@ -64,183 +65,103 @@ def fetch_macro_data(series_dict, period_days=5*365):
 def pct_change(series):
     return float((series.iloc[-1] / series.iloc[-2] - 1) * 100) if len(series) > 1 else 0.0
 
-def is_recent_low(series, window):
-    if len(series) < window:
-        return False
-    return series.iloc[-window:].min() == series.iloc[-1]
-
-# --- INTERFACE ---
+# --- INTERFACE NIVEAU GÉNÉRAL ---
 st.title("Dashboard DCA ETF")
 
-# Bouton de rafraîchissement
+# Refresh button
 if st.sidebar.button("🔄 Rafraîchir les données"):
     fetch_etf_prices.clear()
     fetch_macro_data.clear()
 
-# Chargement des données
+# Load data
 with st.spinner("Chargement des données..."):
     price_df = fetch_etf_prices(etfs)
     macro_df = fetch_macro_data(macro_series)
-    # Récupération du VIX
     try:
-        vix_df = yf.download('^VIX', period='2d', progress=False)['Adj Close']
-        vix_last = vix_df.iloc[-1]
-        vix_prev = vix_df.iloc[-2] if len(vix_df) > 1 else None
+        vix = yf.download('^VIX', period='2d', progress=False)['Adj Close']
+        vix_last, vix_prev = vix.iloc[-1], vix.iloc[-2]
     except Exception:
         vix_last, vix_prev = None, None
 
-# Calculs de base
-deltas = {name: pct_change(series) for name, series in price_df.items()}
-green_counts = {
-    name: sum(
-        1 for w in timeframes.values()
-        if len(series) >= w and series.iloc[-1] < series.iloc[-w:].mean()
+# Key error message bottom
+if not st.secrets.get('FRED_API_KEY'):
+    st.error(
+        "🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour activer les indicateurs macro."
     )
-    for name, series in price_df.items()
-}
 
-# --- SIDEBAR STYLES ---
-# Réduction taille texte dans la sidebar
-st.markdown("""
-    <style>
-    [data-testid="stSidebar"] div, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p {
-        font-size:14px;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# Compute metrics
+deltas = {name: pct_change(series) for name, series in price_df.items()}
+green_counts = {name: sum(series.iloc[-w:].min() == series.iloc[-1] for w in timeframes.values()) for name, series in price_df.items()}
 
-# SIDEBAR
+# Sidebar controls
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold_alloc = st.sidebar.slider(
-    "Seuil de déviation (%)", 5, 30, 15, 5,
+    "Seuil de déviation (%)", min_value=5, max_value=30, value=15,
     help="Écart max entre part réelle et part cible avant alerte de rééquilibrage."
 )
-
 st.sidebar.header("Allocation cible dynamique (%)")
 total_greens = sum(green_counts.values()) or 1
-dynamic_alloc = {name: (count / total_greens) * 50 for name, count in green_counts.items()}
-# Affichage personnalisé avec couleur et flèche et texte réduit
+# Metrics in sidebar
+dynamic_alloc = {name: (count/total_greens)*50 for name, count in green_counts.items()}
 for name, alloc in dynamic_alloc.items():
     periods = green_counts[name]
-    arrow = "" if periods == 0 else "▲"
-    color_arrow = "#28a745" if periods > 0 else "#888"
+    arrow = "▲" if periods>0 else ""
+    color_arrow = "#28a745" if periods>0 else "#888"
     st.sidebar.markdown(
-        f"<div style='margin-bottom:4px; font-size:16px;'>"
-        f"<strong>{name}</strong>: "
-        f"<span style='color:#1f77b4'>{alloc:.1f}%</span> "
-        f"<span style='color:{color_arrow}'>{arrow}{periods}</span> "
-        f"<span style='color:#1f77b4'>{'●'*periods}</span>"
-        f"</div>",
+        f"**{name}**: {alloc:.1f}% <span style='color:{color_arrow}'>{arrow}{periods}</span>",
         unsafe_allow_html=True
     )
-# Poids cibles normalisés pour le calcul interne
-target_weights = {k: v / sum(dynamic_alloc.values()) for k, v in dynamic_alloc.items()}
 
-# Seuils d'arbitrage dynamiques
-st.sidebar.header("Seuils arbitrage entre indices")
-available_thresholds = [1, 5, 10, 15, 20, 25]
-selected_thresholds = st.sidebar.multiselect(
-    "Choisissez les seuils (%)",
-    options=available_thresholds,
-    default=[5, 10, 15],
-    help="Seuils à partir desquels déclencher une alerte pour écart de performance entre deux indices."
-)
+# Arbitrage thresholds\st.sidebar.header("Seuils arbitrage entre indices")
+avail = [5,10,15,20,25]
+sel = st.sidebar.multiselect("Choisissez les seuils (%)", avail, default=[5,10,15])
 
-# --- AFFICHAGE PRINCIPAL ---
+# Main cards with html wrapper
 cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
-    green_count = green_counts[name]
-    # Couleur du cadre selon surpondération
-    if green_count >= 4:
-        border = "#28a745"
-    elif green_count >= 2:
-        border = "#ffc107"
-    else:
-        border = "#dc3545"
-    # Niveau de surpondération
-    if green_count >= 4:
-        symbols = "🔵🔵🔵"; level = "Forte"
-    elif green_count >= 2:
-        symbols = "🔵🔵"; level = "Modérée"
-    else:
-        symbols = "🔵"; level = "Faible"
-
-    col = cols[idx % 2]
-    with col:
-        # Carte principale
-        st.markdown(
-            f"<div style='border:3px solid {border}; border-radius:12px; padding:12px; margin:10px; background-color:white; max-height:360px; overflow:auto;'>",
-            unsafe_allow_html=True
-        )
-        # Titre et performance
-        delta = deltas[name]
-        color = "green" if delta >= 0 else "crimson"
-        last_price = series.iloc[-1] if not series.empty else None
-        price_str = f"{last_price:.2f} USD" if last_price is not None else "N/A"
-        st.markdown(
-            f"<h4 style='margin:4px 0'>{name}: {price_str} (<span style='color:{color}'>{delta:+.2f}%</span>)</h4>",
-            unsafe_allow_html=True
-        )
-        # Graphique sparkline
-        fig = px.line(series, height=90)
-        fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
-        st.plotly_chart(fig, use_container_width=True)
-        # Badges DCA
-        badges_html = ''.join([
-            f"<span title='Moyenne {label}: {series.iloc[-w:].mean():.2f}' "
-            f"style='background:{('green' if series.iloc[-1] < series.iloc[-w:].mean() else 'crimson')};"
-            f"color:white;padding:2px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{label}</span>"
-            for label, w in timeframes.items()
-        ])
-        st.markdown(f"<div style='margin-top:8px'>{badges_html}</div>", unsafe_allow_html=True)
-        # Surpondération alignée à droite
-        st.markdown(
-            f"<div style='text-align:right; font-size:13px;margin-top:6px;'>Surpondération: "
-            f"<span style='color:#1f77b4'>{symbols}</span> ({level})</div>",
-            unsafe_allow_html=True
-        )
-        # Indicateurs macro en deux colonnes
-        items = []
-        for lbl in macro_series:
-            if lbl in macro_df and not macro_df[lbl].dropna().empty:
-                val = macro_df[lbl].dropna().iloc[-1]
-                items.append(f"<li>{lbl}: {val:.2f}</li>")
-            else:
-                items.append(f"<li>{lbl}: N/A</li>")
-        half = len(items)//2 + len(items)%2
-        col1, col2 = items[:half], items[half:]
-        st.markdown(
-            f"<div style='display:flex; gap:20px; margin-top:8px;'>"
-            f"<ul style='padding-left:16px;margin:0'>{''.join(col1)}</ul>"
-            f"<ul style='padding-left:16px;margin:0'>{''.join(col2)}</ul>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-        # Fin carte
-        st.markdown("</div>", unsafe_allow_html=True)
-    # Ligne d'arbitrage entre paires
-    if idx % 2 == 1:
-        st.markdown(
-            f"<h3 style='text-align:center;color:orange;margin-top:10px;'>➡️ Arbitrage si déviation > {threshold_alloc}% ⬅️</h3>",
-            unsafe_allow_html=True
-        )
-
-# --- ALERTES ARBITRAGE ENTRE INDICES ---
-st.subheader("Alertes arbitrage entre indices")
-if selected_thresholds:
-    for th in sorted(selected_thresholds, reverse=True):
-        pairs = [
-            (ni, nj, abs(deltas[ni] - deltas[nj]))
-            for i, ni in enumerate(deltas)
-            for j, nj in enumerate(deltas) if j > i
-            if abs(deltas[ni] - deltas[nj]) > th
-        ]
-        if pairs:
-            st.warning(f"Écart de plus de {th}% détecté :")
-            for ni, nj, diff in pairs:
-                st.write(f"- {ni} vs {nj} : {diff:.1f}%")
-else:
-    st.info("Aucun seuil d'arbitrage sélectionné.")
-
-st.markdown("---")
-st.markdown("DCA Dashboard généré automatiquement.")
+    delta = deltas[name]
+    last_price = series.iloc[-1] if not series.empty else None
+    price_str = f"{last_price:.2f} USD" if last_price else "N/A"
+    level = green_counts[name]
+    border = "#28a745" if level>=4 else "#ffc107" if level>=2 else "#dc3545"
+    # prepare fig html
+    fig = px.line(series, height=120)
+    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
+    chart_html = fig.to_html(include_plotlyjs=False, full_html=False)
+    # badges
+    badges = ''.join(
+        f"<span title='Moyenne {lbl}: {series.iloc[-w:].mean():.2f}' "
+        f"style='background:{('green' if series.iloc[-1]<series.iloc[-w:].mean() else 'crimson')};" 
+        f"color:white;padding:2px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+        for lbl,w in timeframes.items()
+    )
+    # macro lists
+    items = []
+    for lbl in macro_series:
+        if lbl in macro_df and not macro_df[lbl].dropna().empty:
+            items.append(f"<li>{lbl}: {macro_df[lbl].dropna().iloc[-1]:.2f}</li>")
+        else:
+            items.append(f"<li>{lbl}: N/A</li>")
+    half = len(items)//2 + len(items)%2
+    col1, col2 = ''.join(items[:half]), ''.join(items[half:])
+    # assemble card
+    card = f"""
+    <div style='border:3px solid {border}; border-radius:12px; padding:16px; margin:10px; background:#fff; max-height:380px; overflow:auto;'>
+      <h4 style='margin:4px 0'>{name}: {price_str} (<span style='color:{('green' if delta>=0 else 'crimson')}'>{delta:+.2f}%</span>)</h4>
+      {chart_html}
+      <div style='margin-top:8px; display:flex; gap:4px;'>{badges}</div>
+      <div style='text-align:right; font-size:13px; margin-top:6px;'>Surpondération: <span style='color:#1f77b4'>{'🔵'*level}</span></div>
+      <div style='display:flex; gap:20px; margin-top:8px; font-size:12px;'>
+        <ul style='padding-left:16px;margin:0'>{col1}</ul>
+        <ul style='padding-left:16px;margin:0'>{col2}</ul>
+      </div>
+    </div>
+    """
+    html(card, height=400)
+    if idx%2==1 and sel:
+        for th in sorted(sel, reverse=True):
+            pairs=[(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>th]
+            if pairs:
+                st.warning(f"Écart de plus de {th}% détecté :")
+                for i,j,d in pairs: st.write(f"- {i} vs {j} : {d:.1f}%")
+"
