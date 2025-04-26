@@ -164,4 +164,3 @@ for idx, (name, series) in enumerate(price_df.items()):
             if pairs:
                 st.warning(f"Écart de plus de {th}% détecté :")
                 for i,j,d in pairs: st.write(f"- {i} vs {j} : {d:.1f}%")
-"
