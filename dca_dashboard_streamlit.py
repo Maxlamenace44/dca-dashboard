@@ -33,8 +33,8 @@ macro_series = {
     'ECY': 'DGS10'
 }
 
-# --- FONCTIONS DATA ---
-@st.cache_data
+# --- FONCTIONS DE RÉCUPÉRATION DES DONNÉES ---
+@st.cache_data(show_spinner=False)
 def fetch_etf_prices(symbols, period_days=5*365):
     end = datetime.today()
     start = end - timedelta(days=period_days)
@@ -44,16 +44,19 @@ def fetch_etf_prices(symbols, period_days=5*365):
         df[name] = data.get('Adj Close', data.get('Close', pd.NA))
     return df
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def fetch_macro_data(series_dict, period_days=5*365):
-    fred = Fred(api_key=st.secrets.get('FRED_API_KEY', ''))
+    api_key = st.secrets.get('FRED_API_KEY', '')
+    if not api_key:
+        return pd.DataFrame(columns=series_dict.keys())
+    fred = Fred(api_key=api_key)
     end = datetime.today()
     start = end - timedelta(days=period_days)
     df = pd.DataFrame()
     for label, code in series_dict.items():
         try:
             df[label] = fred.get_series(code, start, end)
-        except:
+        except Exception:
             df[label] = pd.NA
     return df
 
@@ -66,18 +69,37 @@ def is_recent_low(series, window):
         return False
     return series.iloc[-window:].min() == series.iloc[-1]
 
-# --- CHARGEMENT DES DONNÉES ---
+# --- INTERFACE ---
 st.title("Dashboard DCA ETF")
+
+# Bouton de rafraîchissement
+if st.sidebar.button("🔄 Rafraîchir les données"):
+    fetch_etf_prices.clear()
+    fetch_macro_data.clear()
+
+# Chargement des données
 with st.spinner("Chargement des données..."):
-    # Vérification de la configuration de la clé FRED
-    if not st.secrets.get('FRED_API_KEY'):
-        st.error("🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour que les indicateurs macro fonctionnent.")
     price_df = fetch_etf_prices(etfs)
     macro_df = fetch_macro_data(macro_series)
 
-deltas = {name: pct_change(series) for name, series in price_df.items()}
+# Alerte clé FRED en bas si manquante
+authority = st.secrets.get('FRED_API_KEY')
+if not authority:
+    st.warning(
+        "🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour activer les indicateurs macro."
+    )
 
-# --- SIDEBAR et ALLOC DYNAMIQUE ---
+# Calculs de base
+deltas = {name: pct_change(series) for name, series in price_df.items()}
+green_counts = {
+    name: sum(
+        1 for w in timeframes.values()
+        if len(series) >= w and series.iloc[-1] < series.iloc[-w:].mean()
+    )
+    for name, series in price_df.items()
+}
+
+# SIDEBAR
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold_alloc = st.sidebar.slider(
     "Seuil de déviation (%)", 5, 30, 15, 5,
@@ -85,33 +107,31 @@ threshold_alloc = st.sidebar.slider(
 )
 
 st.sidebar.header("Allocation cible dynamique (%)")
-green_counts = {}
-for name, series in price_df.items():
-    count = 0
-    for window in timeframes.values():
-        if len(series) >= window and series.iloc[-1] < series.iloc[-window:].mean():
-            count += 1
-    green_counts[name] = count
 total_greens = sum(green_counts.values()) or 1
-# Proportionnel à green_counts, total 50%
-dynamic_alloc = {name: (count/total_greens)*50 for name, count in green_counts.items()}
+dynamic_alloc = {name: (count / total_greens) * 50 for name, count in green_counts.items()}
 for name, alloc in dynamic_alloc.items():
     st.sidebar.metric(
         label=name,
         value=f"{alloc:.1f}%",
         delta=f"{green_counts[name]} périodes vertes"
     )
-target_weights = {k: v/sum(dynamic_alloc.values()) for k, v in dynamic_alloc.items()}
+target_weights = {k: v / sum(dynamic_alloc.values()) for k, v in dynamic_alloc.items()}
 
-# --- AFFICHAGE PRINCIPAL ---
+# Seuils d'arbitrage dynamiques
+st.sidebar.header("Seuils arbitrage entre indices")
+available_thresholds = [5, 10, 15, 20, 25]
+selected_thresholds = st.sidebar.multiselect(
+    "Choisissez les seuils (%)",
+    options=available_thresholds,
+    default=[5, 10, 15],
+    help="Seuils à partir desquels déclencher une alerte pour écart de performance entre deux indices."
+)
+
+# AFFICHAGE PRINCIPAL
 cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
-    # Recalcul du nombre de périodes vertes pour le contour
-    green_count = sum(
-        1 for w in timeframes.values()
-        if len(series) >= w and series.iloc[-1] < series.iloc[-w:].mean()
-    )
-    # Définition du contour
+    green_count = green_counts[name]
+    # Couleur du contour
     if green_count >= 4:
         border = "#28a745"
     elif green_count >= 2:
@@ -119,33 +139,31 @@ for idx, (name, series) in enumerate(price_df.items()):
     else:
         border = "#dc3545"
 
-    col = cols[idx % 2]
-    with col:
+    with cols[idx % 2]:
         st.markdown(
             f"<div style='border:2px solid {border};padding:16px;border-radius:8px;margin:10px 0;background-color:#fff;box-sizing:border-box;'>",
             unsafe_allow_html=True
         )
-        # En-tête
+        # En-tête: valeur et fluctuation
         delta = deltas[name]
         color = "green" if delta >= 0 else "crimson"
-        last_price = series.iloc[-1]
+        last_price = series.iloc[-1] if not series.empty else None
+        price_str = f"{last_price:.2f} USD" if last_price is not None else "N/A"
         st.markdown(
-            f"<h4>{name}: {last_price:.2f} USD (<span style='color:{color}'>{delta:+.2f}%</span>)</h4>",
+            f"<h4>{name}: {price_str} (<span style='color:{color}'>{delta:+.2f}%</span>)</h4>",
             unsafe_allow_html=True
         )
         # Sparkline
         fig = px.line(series, height=100)
-        fig.update_layout(
-            margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False
-        )
+        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False)
         st.plotly_chart(fig, use_container_width=True)
         # Badges DCA
         badges = []
         for label, w in timeframes.items():
             window = series.iloc[-w:]
-            avg = window.mean()
-            title = f"Moyenne {label}: {avg:.2f}"
-            color_badge = "green" if last_price < avg else "crimson"
+            avg = window.mean() if len(window) else None
+            title = f"Moyenne {label}: {avg:.2f}" if avg is not None else "N/A"
+            color_badge = "green" if avg is not None and series.iloc[-1] < avg else "crimson"
             badges.append(
                 f"<span title='{title}' style='background:{color_badge};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>"
             )
@@ -179,23 +197,20 @@ for idx, (name, series) in enumerate(price_df.items()):
 
 # --- ALERTES ARBITRAGE ENTRE INDICES ---
 st.subheader("Alertes arbitrage entre indices")
-for th in [15, 10, 5]:
-    pairs = [
-        (ni, nj, abs(deltas[ni]-deltas[nj]))
-        for i, ni in enumerate(deltas)
-        for j, nj in enumerate(deltas) if j>i
-        if abs(deltas[ni]-deltas[nj])>th
-    ]
-    if pairs:
-        st.warning(f"Écart de plus de {th}% détecté :")
-        for ni, nj, diff in pairs:
-            st.write(f"- {ni} vs {nj} : {diff:.1f}%")
+if selected_thresholds:
+    for th in sorted(selected_thresholds, reverse=True):
+        pairs = [
+            (ni, nj, abs(deltas[ni] - deltas[nj]))
+            for i, ni in enumerate(deltas)
+            for j, nj in enumerate(deltas) if j > i
+            if abs(deltas[ni] - deltas[nj]) > th
+        ]
+        if pairs:
+            st.warning(f"Écart de plus de {th}% détecté :")
+            for ni, nj, diff in pairs:
+                st.write(f"- {ni} vs {nj} : {diff:.1f}%")
+else:
+    st.info("Aucun seuil d'arbitrage sélectionné.")
 
 st.markdown("---")
 st.markdown("DCA Dashboard généré automatiquement.")
-
-# Affichage de l'erreur de clé FRED en bas sans bloquer l'app
-if not st.secrets.get('FRED_API_KEY'):
-    st.error(
-        "🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour que les indicateurs macro fonctionnent."
-    )
