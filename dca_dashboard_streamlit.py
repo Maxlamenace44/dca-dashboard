@@ -82,8 +82,7 @@ try:
 except Exception:
     st.sidebar.write("VIX 3 mois non disponible")
 
-st.sidebar.header("Paramètres de rééquilibrage")
-st.sidebar.header("Paramètres de rééquilibrage")
+st.sidebar.header("Paramètres de rééquilibrage")("Paramètres de rééquilibrage")
 threshold = st.sidebar.slider("Seuil de déviation (%)", 5, 30, 15, 5)
 
 st.sidebar.header("Allocation dynamique (%)")
@@ -137,7 +136,7 @@ for idx, (name, series) in enumerate(price_df.items()):
             )
     badges_html = ''.join(badges)
 
-    # Macro indicators two columns
+        # Macro indicators two columns
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -145,5 +144,6 @@ for idx, (name, series) in enumerate(price_df.items()):
             items.append(f"<li>{lbl}: {val:.2f}</li>")
         else:
             items.append(f"<li>{lbl}: N/A</li>")
-    half = len(items)//2 + len(items)%2    left_html = ''.join(items[:half])
+    half = len(items)//2 + len(items)%2
+    left_html = ''.join(items[:half])
     right_html = ''.join(items[half:])
