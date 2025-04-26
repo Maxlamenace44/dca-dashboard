@@ -74,96 +74,93 @@ with st.spinner("Chargement des données..."):
 
 deltas = {name: pct_change(series) for name, series in price_df.items()}
 
-# --- SIDEBAR ---
+# --- SIDEBAR et ALLOC DYNAMIQUE ---
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold_alloc = st.sidebar.slider(
-    "Seuil de déviation (%)",
-    5, 30, 15, 5,
+    "Seuil de déviation (%)", 5, 30, 15, 5,
     help="Écart max entre part réelle et part cible avant alerte de rééquilibrage."
 )
 
-st.sidebar.header("Allocation cible (%)")
-# Saisie des allocations (en % de l'univers ETF, max 50% du portefeuille)
-raw_weights = {
-    name: st.sidebar.number_input(
-        name,
-        min_value=0.0,
-        max_value=50.0,
-        value=50/len(etfs),
-        help=f"Allocation cible pour {name} (max 50% de l'actif total, réparti sur les ETF)."
+st.sidebar.header("Allocation cible dynamique (%)")
+green_counts = {}
+for name, series in price_df.items():
+    count = 0
+    for window in timeframes.values():
+        if len(series) >= window and series.iloc[-1] < series.iloc[-window:].mean():
+            count += 1
+    green_counts[name] = count
+total_greens = sum(green_counts.values()) or 1
+# Proportionnel à green_counts, total 50%
+dynamic_alloc = {name: (count/total_greens)*50 for name, count in green_counts.items()}
+for name, alloc in dynamic_alloc.items():
+    st.sidebar.metric(
+        label=name,
+        value=f"{alloc:.1f}%",
+        delta=f"{green_counts[name]} périodes vertes"
     )
-    for name in etfs
-}
-# Ajustement si dépassement du total de 50%
-total_raw = sum(raw_weights.values())
-# Indication du reste à allouer ou du dépassement
-if total_raw <= 50:
-    st.sidebar.info(f"Reste à allouer : {50 - total_raw:.1f}%")
-else:
-    st.sidebar.error(f"Dépassement de {total_raw - 50:.1f}%.")
-if total_raw > 50:
-    st.sidebar.warning(
-        f"Allocation ETF limitée à 50%. Vos valeurs ont été normalisées (facteur {50/total_raw:.2f})."
-    )
-    # Mise à l'échelle
-    scaled_raw = {k: v * (50/total_raw) for k, v in raw_weights.items()}
-else:
-    scaled_raw = raw_weights
-# Normalisation interne pour calcul des poids relatifs
-sum_scaled = sum(scaled_raw.values()) or 1
-# target_weights = proportions internes pour rééquilibrage
-target_weights = {k: v / sum_scaled for k, v in scaled_raw.items()}
+target_weights = {k: v/sum(dynamic_alloc.values()) for k, v in dynamic_alloc.items()}
 
 # --- AFFICHAGE PRINCIPAL ---
 cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
+    # Recalcul du nombre de périodes vertes pour le contour
+    green_count = sum(
+        1 for w in timeframes.values()
+        if len(series) >= w and series.iloc[-1] < series.iloc[-w:].mean()
+    )
+    # Définition du contour
+    if green_count >= 4:
+        border = "#28a745"
+    elif green_count >= 2:
+        border = "#ffc107"
+    else:
+        border = "#dc3545"
+
     col = cols[idx % 2]
     with col:
-        border = "green" if is_recent_low(series, timeframes['Hebdo']) else "#ddd"
-        st.markdown(f"<div style='border:2px solid {border};padding:8px;border-radius:6px;margin-bottom:12px'>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='border:2px solid {border};padding:16px;border-radius:8px;margin:10px 0;background-color:#fff;box-sizing:border-box;'>",
+            unsafe_allow_html=True
+        ),
+            unsafe_allow_html=True
+        )
+        # En-tête
         delta = deltas[name]
         color = "green" if delta >= 0 else "crimson"
-        # Affichage du nom, valeur du jour et % de fluctuation
         last_price = series.iloc[-1]
         st.markdown(
             f"<h4>{name}: {last_price:.2f} USD (<span style='color:{color}'>{delta:+.2f}%</span>)</h4>",
             unsafe_allow_html=True
         )
+        # Sparkline
         fig = px.line(series, height=100)
-        fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
+        fig.update_layout(
+            margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False
+        )
         st.plotly_chart(fig, use_container_width=True)
-        # Indicateurs DCA : rouge si cours > moyenne, vert sinon
+        # Badges DCA
         badges = []
-        green_count = 0
         for label, w in timeframes.items():
             window = series.iloc[-w:]
             avg = window.mean()
-            last = series.iloc[-1]
-            # Infobulle avec moyenne de la période
             title = f"Moyenne {label}: {avg:.2f}"
-            if last < avg:
-                color_badge = "green"
-                green_count += 1
-            else:
-                color_badge = "crimson"
+            color_badge = "green" if last_price < avg else "crimson"
             badges.append(
                 f"<span title='{title}' style='background:{color_badge};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>"
             )
         st.markdown(''.join(badges), unsafe_allow_html=True)
-        # Indicateur de surpondération : plus de périodes vertes = plus fort
-        if green_count > 0:
+        # Surpondération
+        if green_count:
             if green_count >= 4:
-                level = "Forte"
-                symbols = "🔵🔵🔵"
+                symbols = "🔵🔵🔵"; level = "Forte"
             elif green_count >= 2:
-                level = "Modérée"
-                symbols = "🔵🔵"
+                symbols = "🔵🔵"; level = "Modérée"
             else:
-                level = "Faible"
-                symbols = "🔵"
+                symbols = "🔵"; level = "Faible"
             st.markdown(f"**Surpondération**: {symbols} ({level})", unsafe_allow_html=True)
         else:
             st.markdown("**Surpondération**: Aucune", unsafe_allow_html=True)
+        # Indicateurs macro
         items = []
         for lbl in macro_series:
             if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -174,24 +171,24 @@ for idx, (name, series) in enumerate(price_df.items()):
         st.markdown(f"<ul style='padding-left:16px'>{''.join(items)}</ul>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
     if idx % 2 == 1:
-        st.markdown(f"<h3 style='text-align:center;color:orange;'>➡️ Arbitrage si déviation > {threshold_alloc}% ⬅️</h3>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h3 style='text-align:center;color:orange;'>➡️ Arbitrage si déviation > {threshold_alloc}% ⬅️</h3>",
+            unsafe_allow_html=True
+        )
 
-# --- ALERTE ARBITRAGE ENTRE INDICES ---
+# --- ALERTES ARBITRAGE ENTRE INDICES ---
 st.subheader("Alertes arbitrage entre indices")
-thresholds = [15, 10, 5]
-for th in thresholds:
-    pairs = []
-    for i, name_i in enumerate(deltas):
-        for j, name_j in enumerate(deltas):
-            if j <= i:
-                continue
-            diff = abs(deltas[name_i] - deltas[name_j])
-            if diff > th:
-                pairs.append((name_i, name_j, diff))
+for th in [15, 10, 5]:
+    pairs = [
+        (ni, nj, abs(deltas[ni]-deltas[nj]))
+        for i, ni in enumerate(deltas)
+        for j, nj in enumerate(deltas) if j>i
+        if abs(deltas[ni]-deltas[nj])>th
+    ]
     if pairs:
-        st.warning(f"Ecart de plus de {th}% détecté entre certains indices :")
-        for ni, nj, df in pairs:
-            st.write(f"- {ni} vs {nj} : écart de {df:.1f}%")
+        st.warning(f"Écart de plus de {th}% détecté :")
+        for ni, nj, diff in pairs:
+            st.write(f"- {ni} vs {nj} : {diff:.1f}%")
 
 st.markdown("---")
 st.markdown("DCA Dashboard généré automatiquement.")
