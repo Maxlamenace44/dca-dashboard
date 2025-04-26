@@ -69,9 +69,28 @@ green_counts = compute_green_counts(price_df)
 try:
     vix_3m = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
     fig_vix = px.line(vix_3m, height=150)
-    fig_vix.update_layout(margin=dict(l=0,r=0,t=0,b=0),xaxis_showgrid=False,yaxis_showgrid=False,showlegend=False)
+    fig_vix.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        xaxis_showgrid=False,
+        yaxis_showgrid=False,
+        showlegend=False
+    )
     st.sidebar.subheader("VIX (3 mois)")
     st.sidebar.plotly_chart(fig_vix, use_container_width=True)
+    # Metric dernière valeur VIX
+    vix_latest = vix_3m.iloc[-1]
+    vix_prev = vix_3m.iloc[-2] if len(vix_3m) > 1 else None
+    if vix_prev is not None:
+        st.sidebar.metric(
+            "VIX (Dernière séance)",
+            f"{vix_latest:.2f}",
+            f"{vix_latest - vix_prev:+.2f}",
+            delta_color="inverse"
+        )
+    else:
+        st.sidebar.metric("VIX (Dernière séance)", f"{vix_latest:.2f}")
+except Exception:
+    st.sidebar.write("VIX non disponible")(fig_vix, use_container_width=True)
 except:
     st.sidebar.write("VIX 3 mois non disponible")
 
