@@ -140,17 +140,15 @@ for idx, (name, series) in enumerate(price_df.items()):
     fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False, showlegend=False)
     fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-    # Badges DCA (inclut 5 ans)
+    # Badges DCA (tous les timeframes y compris 5 ans)
     badges = []
     if last is not None:
         for lbl, w in timeframes.items():
-            # Calcul de la moyenne si possible
             if len(series) >= w:
                 avg = series.iloc[-w:].mean()
                 color_bg = 'green' if last < avg else 'crimson'
                 title = f"Moyenne {lbl}: {avg:.2f}"
             else:
-                # données insuffisantes
                 color_bg = 'crimson'
                 title = f"Pas assez de données pour {lbl}"
             badges.append(
