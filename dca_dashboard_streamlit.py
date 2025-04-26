@@ -125,4 +125,3 @@ for name, series in price_df.items():
 # --- FIN ---
 st.markdown("---")
 st.markdown("DCA Dashboard généré automatiquement. Personnalise-le selon tes besoins.")
-```
