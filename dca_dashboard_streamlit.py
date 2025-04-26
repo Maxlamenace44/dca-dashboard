@@ -99,6 +99,16 @@ green_counts = {
     for name, series in price_df.items()
 }
 
+# --- SIDEBAR STYLES ---
+# Réduction taille texte dans la sidebar
+st.markdown("""
+    <style>
+    [data-testid="stSidebar"] div, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p {
+        font-size:14px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # SIDEBAR
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold_alloc = st.sidebar.slider(
@@ -109,13 +119,19 @@ threshold_alloc = st.sidebar.slider(
 st.sidebar.header("Allocation cible dynamique (%)")
 total_greens = sum(green_counts.values()) or 1
 dynamic_alloc = {name: (count / total_greens) * 50 for name, count in green_counts.items()}
+# Affichage personnalisé avec couleur et flèche et texte réduit
 for name, alloc in dynamic_alloc.items():
-    # Affichage de la metric avec % et nombre de périodes vertes à côté
     periods = green_counts[name]
-    st.sidebar.metric(
-        label=name,
-        value=f"{alloc:.1f}% — {periods} périodes vertes",
-        delta=None
+    arrow = "" if periods == 0 else "▲"
+    color_arrow = "#28a745" if periods > 0 else "#888"
+    st.sidebar.markdown(
+        f"<div style='margin-bottom:4px; font-size:14px;'>"
+        f"<strong>{name}</strong>: "
+        f"<span style='color:#1f77b4'>{alloc:.1f}%</span> "
+        f"<span style='color:{color_arrow}'>{arrow}{periods}</span> "
+        f"<span style='color:#1f77b4'>{'●'*periods}</span>"
+        f"</div>",
+        unsafe_allow_html=True
     )
 # Poids cibles normalisés pour le calcul interne
 target_weights = {k: v / sum(dynamic_alloc.values()) for k, v in dynamic_alloc.items()}
@@ -144,33 +160,19 @@ for idx, (name, series) in enumerate(price_df.items()):
 
     with cols[idx % 2]:
         st.markdown(
-            f"<div style='border:3px solid {border}; border-radius:12px; padding:16px; margin:15px 5px; background-color:white;'>",
+            f"<div style='border:3px solid {border}; border-radius:12px; padding:16px; margin:15px 5px; background-color:white; max-height:400px; overflow:auto;'>",
             unsafe_allow_html=True
         )
-        # En-tête: valeur et fluctuation
-        delta = deltas[name]
-        color = "green" if delta >= 0 else "crimson"
-        last_price = series.iloc[-1] if not series.empty else None
-        price_str = f"{last_price:.2f} USD" if last_price is not None else "N/A"
+        # Zone de saisie placeholder en haut de la carte (deux champs)
         st.markdown(
-            f"<h4>{name}: {price_str} (<span style='color:{color}'>{delta:+.2f}%</span>)</h4>",
+            f"""
+            <div style='display:flex; gap:8px; margin-bottom:16px;'>
+              <input type='text' placeholder=' ' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>
+              <input type='text' placeholder=' ' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>
+            </div>
+            """,
             unsafe_allow_html=True
         )
-        # Sparkline
-        fig = px.line(series, height=100)
-        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False)
-        st.plotly_chart(fig, use_container_width=True)
-        # Badges DCA
-        badges = []
-        for label, w in timeframes.items():
-            window = series.iloc[-w:]
-            avg = window.mean() if len(window) else None
-            title = f"Moyenne {label}: {avg:.2f}" if avg is not None else "N/A"
-            color_badge = "green" if avg is not None and series.iloc[-1] < avg else "crimson"
-            badges.append(
-                f"<span title='{title}' style='background:{color_badge};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>"
-            )
-        st.markdown(''.join(badges), unsafe_allow_html=True)
         # Surpondération
         if green_count:
             if green_count >= 4:
@@ -182,16 +184,28 @@ for idx, (name, series) in enumerate(price_df.items()):
             st.markdown(f"**Surpondération**: {symbols} ({level})", unsafe_allow_html=True)
         else:
             st.markdown("**Surpondération**: Aucune", unsafe_allow_html=True)
-        # Indicateurs macro
-        items = []
+                # Indicateurs macro en 2 colonnes
+        macro_items = []
         for lbl in macro_series:
             if lbl in macro_df and not macro_df[lbl].dropna().empty:
                 val = macro_df[lbl].dropna().iloc[-1]
-                items.append(f"<li>{lbl}: {val:.2f}</li>")
+                macro_items.append(f"<li>{lbl}: {val:.2f}</li>")
             else:
-                items.append(f"<li>{lbl}: N/A</li>")
-        st.markdown(f"<ul style='padding-left:16px'>{''.join(items)}</ul>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+                macro_items.append(f"<li>{lbl}: N/A</li>")
+        # division en deux colonnes
+        half = len(macro_items) // 2 + len(macro_items) % 2
+        col1 = macro_items[:half]
+        col2 = macro_items[half:]
+        st.markdown(
+            """
+            <div style='display:flex; gap:40px; padding-top:12px;'>
+              <ul style='padding-left:16px'>""" + ''.join(col1) + """</ul>
+              <ul style='padding-left:16px'>""" + ''.join(col2) + """</ul>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown("</div>", unsafe_allow_html=True), unsafe_allow_html=True)
     if idx % 2 == 1:
         st.markdown(
             f"<h3 style='text-align:center;color:orange;'>➡️ Arbitrage si déviation > {threshold_alloc}% ⬅️</h3>",
