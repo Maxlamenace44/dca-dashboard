@@ -19,7 +19,7 @@ etfs = {
     'WORLD': 'VT',
     'EMERGING': 'EEM'
 }
-# Détection de points bas sur différentes périodes (en jours)
+# Périodes pour détection des points bas (en jours)
 timeframes = {
     'Hebdo': 5,
     'Mensuel': 21,
@@ -32,96 +32,90 @@ macro_series = {
     'CAPE10': 'CAPE',
     'FedFunds': 'FEDFUNDS',
     'CPI YoY': 'CPIAUCSL',
-    'ECY': 'DGS10'  # exemple, 10-year treasury yield
+    'ECY': 'DGS10'  # 10-year treasury yield
 }
 
 # --- FONCTIONS DE RÉCUPÉRATION DES DONNÉES ---
 @st.cache_data
-def fetch_etf_prices(symbols, period_days=5*365):
-    """Récupère les cours ajustés pour chaque ETF sur la période spécifiée."""
+async def fetch_etf_prices(symbols, period_days=5*365):
+    """Récupère les cours ajustés (ou close si adj absent) pour chaque ETF."""
     end = datetime.today()
     start = end - timedelta(days=period_days)
     df = pd.DataFrame()
     for name, ticker in symbols.items():
         data = yf.download(ticker, start=start, end=end, progress=False)
-        df[name] = data['Adj Close']
+        # Choix de la colonne existante
+        if 'Adj Close' in data.columns:
+            df[name] = data['Adj Close']
+        elif 'Close' in data.columns:
+            df[name] = data['Close']
+        else:
+            df[name] = pd.NA
     return df
 
 @st.cache_data
-def fetch_macro_data(series_dict, period_days=5*365):
+async def fetch_macro_data(series_dict, period_days=5*365):
     """Récupère les données macro via FRED API. Nécessite FRED_API_KEY dans st.secrets."""
-    fred_key = st.secrets.get('FRED_API_KEY')
+    fred_key = st.secrets.get('FRED_API_KEY', '')
     fred = Fred(api_key=fred_key)
     end = datetime.today()
     start = end - timedelta(days=period_days)
     df = pd.DataFrame()
-    for label, fred_code in series_dict.items():
-        s = fred.get_series(fred_code, start, end)
-        df[label] = s
+    for label, code in series_dict.items():
+        try:
+            s = fred.get_series(code, start, end)
+            df[label] = s
+        except Exception:
+            df[label] = pd.NA
     return df
 
 # --- UTILITAIRES ---
 def pct_change(series):
-    return (series.iloc[-1] / series.iloc[-2] - 1) * 100
+    return float((series.iloc[-1] / series.iloc[-2] - 1) * 100) if len(series) > 1 else 0.0
 
 def is_recent_low(series, window):
-    """Retourne True si la dernière valeur est le plus bas des `window` derniers jours."""
+    """True si le dernier point est le plus bas des `window` derniers jours."""
+    if len(series) < window:
+        return False
     return series.iloc[-window:].min() == series.iloc[-1]
 
 # --- CHARGEMENT DES DONNÉES ---
 st.title("Dashboard DCA ETF")
 with st.spinner("Chargement des données..."):
-    price_df = fetch_etf_prices(etfs)
-    macro_df = fetch_macro_data(macro_series)
+    price_df = st.experimental_memo(fetch_etf_prices)(etfs)
+    macro_df = st.experimental_memo(fetch_macro_data)(macro_series)
 
 # --- SIDEBAR ---
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold = st.sidebar.slider("Seuil de déviation (%)", 5, 30, 15, 5)
 
 st.sidebar.header("Allocation cible (%)")
-target_weights = {}
-for name in etfs:
-    target_weights[name] = st.sidebar.number_input(name, min_value=0.0, max_value=100.0, value=100/len(etfs))
-# Normalisation
+target_weights = {name: st.sidebar.number_input(name, min_value=0.0, max_value=100.0, value=100/len(etfs)) for name in etfs}
 total = sum(target_weights.values()) or 1
 target_weights = {k: v/total for k, v in target_weights.items()}
 
 # --- AFFICHAGE GRAPHIQUE ---
-cols2 = st.columns(2)
-idx = 0
-for name, series in price_df.items():
-    col = cols2[idx % 2]
+cols = st.columns(2)
+for idx, (name, series) in enumerate(price_df.items()):
+    col = cols[idx % 2]
     with col:
-        # Bordure verte si low hebdo sinon gris
-        border_color = "green" if is_recent_low(series, timeframes['Hebdo']) else "#ddd"
-        st.markdown(f"<div style='border:3px solid {border_color};padding:8px;border-radius:6px;margin-bottom:12px'>", unsafe_allow_html=True)
-        # Titre + performance
+        border = "green" if is_recent_low(series, timeframes['Hebdo']) else "#ddd"
+        st.markdown(f"<div style='border:2px solid {border};padding:8px;border-radius:6px;margin-bottom:12px'>", unsafe_allow_html=True)
         delta = pct_change(series)
-        col_color = "green" if delta >= 0 else "crimson"
-        st.markdown(f"<h4>{name} : <span style='color:{col_color}'>{delta:.1f}%</span></h4>", unsafe_allow_html=True)
-        # Sparkline
+        color = "green" if delta >= 0 else "crimson"
+        st.markdown(f"<h4>{name}: <span style='color:{color}'>{delta:.1f}%</span></h4>", unsafe_allow_html=True)
         fig = px.line(series, height=100)
         fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
         st.plotly_chart(fig, use_container_width=True)
-        # Mini indicateurs points bas
-        badges = []
-        for label, w in timeframes.items():
-            flag = is_recent_low(series, w)
-            bg = "green" if flag else "crimson"
-            badges.append(f"<span style='background:{bg};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>")
-        st.markdown("".join(badges), unsafe_allow_html=True)
-        # Indicateurs macro
-        vals = []
-        for lbl in ['CAPE10','FedFunds','CPI YoY','ECY']:
-            v = macro_df[lbl].dropna().iloc[-1] if lbl in macro_df else None
-            vals.append(f"<li>{lbl} : {v:.2f}</li>")
-        st.markdown(f"<ul style='padding-left:16px'>{''.join(vals)}</ul>", unsafe_allow_html=True)
+        # Badges bas
+        badges = ''.join([f"<span style='background:{('green' if is_recent_low(series,w) else 'crimson')};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{lbl}</span>" for lbl,w in timeframes.items()])
+        st.markdown(badges, unsafe_allow_html=True)
+        # Macro derniers valeurs
+        vals = ''.join([f"<li>{lbl}: {macro_df[lbl].dropna().iloc[-1] if lbl in macro_df and not macro_df[lbl].dropna().empty else 'N/A'}</li>" for lbl in macro_series])
+        st.markdown(f"<ul style='padding-left:16px'>{vals}</ul>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-    # Message arbitrage central
     if idx % 2 == 1:
         st.markdown(f"<h3 style='text-align:center;color:orange;'>➡️ Arbitrage si déviation > {threshold}% ⬅️</h3>", unsafe_allow_html=True)
-    idx += 1
 
-# --- FIN ---
 st.markdown("---")
-st.markdown("DCA Dashboard généré automatiquement. Personnalise-le selon tes besoins.")
+st.markdown("DCA Dashboard généré automatiquement.")
