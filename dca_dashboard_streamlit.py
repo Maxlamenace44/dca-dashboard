@@ -92,6 +92,17 @@ deltas = {n: pct_change(s) for n, s in price_df.items()}
 green_counts = compute_green_counts(price_df)
 
 # Sidebar
+# VIX (3 mois) avec graphique
+try:
+    vix_3m = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
+    fig_vix = px.line(vix_3m, height=150)
+    fig_vix.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False, showlegend=False)
+    st.sidebar.subheader("VIX (3 mois)")
+    st.sidebar.plotly_chart(fig_vix, use_container_width=True)
+except Exception:
+    st.sidebar.write("VIX 3 mois non disponible")
+
+st.sidebar.header("Paramètres de rééquilibrage")
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold = st.sidebar.slider("Seuil de déviation (%)", 5, 30, 15, 5)
 
@@ -126,10 +137,28 @@ for idx, (name, series) in enumerate(price_df.items()):
 
     # Prepare sparkline HTML
     fig = px.line(series, height=120)
-    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
+    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False, showlegend=False)
     fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-    # Badges DCA
+    # Badges DCA (inclut 5 ans)
+    badges = []
+    if last is not None:
+        for lbl, w in timeframes.items():
+            # Calcul de la moyenne si possible
+            if len(series) >= w:
+                avg = series.iloc[-w:].mean()
+                color_bg = 'green' if last < avg else 'crimson'
+                title = f"Moyenne {lbl}: {avg:.2f}"
+            else:
+                # données insuffisantes
+                color_bg = 'crimson'
+                title = f"Pas assez de données pour {lbl}"
+            badges.append(
+                f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+            )
+    badges_html = ''.join(badges)
+
+    # Macro indicators two columns
     badges_html = ""
     if last is not None:
         badge_list = []
