@@ -112,9 +112,16 @@ for idx, (name, series) in enumerate(price_df.items()):
     gc = green_counts[name]
     border = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
 
-    # Sparkline HTML
-    fig = px.line(series, height=120)
-    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False, showlegend=False)
+        # Sparkline HTML
+    fig = px.line(series, height=170)
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        xaxis_showgrid=False,
+        yaxis_showgrid=False,
+        showlegend=False,
+        xaxis_title='Date',
+        yaxis_title='Value'
+    )
     fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
     # Badges DCA
@@ -157,7 +164,7 @@ for idx, (name, series) in enumerate(price_df.items()):
 </div>
 '''    
     with cols[idx % 2]:
-        html(card_html, height=360)
+        html(card_html, height=350)
     # Arbitrage alerts
     if idx % 2 == 1 and thresholds:
         for t in sorted(thresholds, reverse=True):
