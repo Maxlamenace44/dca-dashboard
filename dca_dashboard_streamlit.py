@@ -14,7 +14,7 @@ etfs = {'S&P500':'SPY','NASDAQ100':'QQQ','CAC40':'CAC.PA','EURO STOXX50':'FEZ','
 timeframes = {'Hebdo':5,'Mensuel':21,'Trimestriel':63,'Annuel':252,'5 ans':1260}
 macro_series = {'CAPE10':'CAPE','Fed Funds Rate':'FEDFUNDS','CPI YoY':'CPIAUCSL','ECY':'DGS10'}
 
-# --- FONCTIONS DE RÉCUPÉRATION DES DONNÉES ---
+# --- FONCTIONS DONNÉES ---
 @st.cache_data(show_spinner=False)
 def fetch_etf_prices(symbols, days=5*365):
     end = datetime.today()
@@ -60,6 +60,8 @@ def compute_green_counts(df):
 
 # --- INTERFACE ---
 st.title("Dashboard DCA ETF")
+
+# Rafraîchir
 if st.sidebar.button("🔄 Rafraîchir les données"):
     st.cache_data.clear()
 
@@ -71,41 +73,36 @@ with st.spinner("Chargement des données…"):
 deltas = {n: pct_change(s) for n, s in price_df.items()}
 green_counts = compute_green_counts(price_df)
 
-# Sidebar
-# VIX (3 mois) avec graphique
+# Sidebar: VIX 3 mois
 try:
     vix_3m = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
     fig_vix = px.line(vix_3m, height=150)
-    fig_vix.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False, showlegend=False)
+    fig_vix.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False, showlegend=False)
     st.sidebar.subheader("VIX (3 mois)")
     st.sidebar.plotly_chart(fig_vix, use_container_width=True)
 except Exception:
     st.sidebar.write("VIX 3 mois non disponible")
 
+# Sidebar: Contrôles
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold = st.sidebar.slider("Seuil de déviation (%)", 5, 30, 15, 5)
-
 st.sidebar.header("Allocation dynamique (%)")
 total_green = sum(green_counts.values()) or 1
 for name, cnt in green_counts.items():
     alloc = (cnt / total_green) * 50
     arrow = "▲" if cnt > 0 else ""
     color_arrow = "#28a745" if cnt > 0 else "#888"
-    st.sidebar.markdown(f"**{name}**: {alloc:.1f}% <span style='color:{color_arrow}'>{arrow}{cnt}</span>",
-                         unsafe_allow_html=True)
-
-# VIX
+    st.sidebar.markdown(f"**{name}**: {alloc:.1f}% <span style='color:{color_arrow}'>{arrow}{cnt}</span>", unsafe_allow_html=True)
+# VIX dernière séance
 try:
     vix = yf.download('^VIX', period='2d', progress=False)['Adj Close']
     st.sidebar.metric("VIX", f"{vix.iloc[-1]:.2f}", f"{vix.iloc[-1]-vix.iloc[-2]:+.2f}")
 except Exception:
     st.sidebar.write("VIX non disponible")
-
 st.sidebar.header("Seuils arbitrage")
 thresholds = st.sidebar.multiselect("Choisir seuils (%)", [5,10,15,20,25], default=[5,10,15])
 
-# Main display
-cols = st.columns(2)
+# Main display\ ncols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
     delta = deltas[name]
     perf_color = "green" if delta >= 0 else "crimson"
@@ -114,12 +111,12 @@ for idx, (name, series) in enumerate(price_df.items()):
     gc = green_counts[name]
     border = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
 
-    # Prepare sparkline HTML
+    # Sparkline HTML
     fig = px.line(series, height=120)
     fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False, showlegend=False)
     fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-    # Badges DCA (tous les timeframes y compris 5 ans)
+    # Badges DCA
     badges = []
     if last is not None:
         for lbl, w in timeframes.items():
@@ -130,13 +127,10 @@ for idx, (name, series) in enumerate(price_df.items()):
             else:
                 color_bg = 'crimson'
                 title = f"Pas assez de données pour {lbl}"
-            badges.append(
-                f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;" 
-                f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
-            )
+            badges.append(f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>")
     badges_html = ''.join(badges)
 
-    # Macro indicators two columns Macro indicators two columns
+    # Indicateurs macro deux colonnes
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -147,3 +141,31 @@ for idx, (name, series) in enumerate(price_df.items()):
     half = len(items)//2 + len(items)%2
     left_html = ''.join(items[:half])
     right_html = ''.join(items[half:])
+
+    # Card HTML
+    card_html = f'''
+<div style="border:3px solid {border};border-radius:12px;padding:12px;margin:4px 0;background:white;overflow:auto;">
+  <h4 style="margin:4px 0;">{name}: {price_str} <span style="color:{perf_color}">{delta:+.2f}%</span></h4>
+  {fig_html}
+  <div style="margin:8px 0;display:flex;gap:4px;">{badges_html}</div>
+  <div style="text-align:right;font-size:13px;">Surpondération: <span style="color:#1f77b4">{'🔵'*gc}</span></div>
+  <div style="display:flex;gap:40px;margin-top:8px;font-size:12px;">
+    <ul style="margin:0;padding-left:16px;">{left_html}</ul>
+    <ul style="margin:0;padding-left:16px;">{right_html}</ul>
+  </div>
+</div>
+'''    
+    with cols[idx % 2]:
+        html(card_html, height=360)
+    # Arbitrage alerts
+    if idx % 2 == 1 and thresholds:
+        for t in sorted(thresholds, reverse=True):
+            pairs = [(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
+            if pairs:
+                st.warning(f"Écart > {t}% détecté :")
+                for i,j,d in pairs:
+                    st.write(f"- {i} vs {j}: {d:.1f}%")
+
+# FRED warning
+if not st.secrets.get('FRED_API_KEY'):
+    st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
