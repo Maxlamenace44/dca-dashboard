@@ -150,41 +150,69 @@ selected_thresholds = st.sidebar.multiselect(
 cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
     green_count = green_counts[name]
-    # Couleur du contour
+    # Détermination de la couleur de bordure
     if green_count >= 4:
         border = "#28a745"
     elif green_count >= 2:
         border = "#ffc107"
     else:
         border = "#dc3545"
+    # Calcul du niveau de surpondération
+    if green_count >= 4:
+        symbols = "🔵🔵🔵"; level = "Forte"
+    elif green_count >= 2:
+        symbols = "🔵🔵"; level = "Modérée"
+    else:
+        symbols = "🔵"; level = "Faible"
 
-    with cols[idx % 2]:
+    col = cols[idx % 2]
+    with col:
+        # Conteneur principal de la carte
         st.markdown(
             f"<div style='border:3px solid {border}; border-radius:12px; padding:16px; margin:15px 5px; background-color:white; max-height:400px; overflow:auto;'>",
             unsafe_allow_html=True
         )
-        # Zone de saisie placeholder en haut de la carte (deux champs)
+        # Première ligne d'inputs
         st.markdown(
-            f"""
-            <div style='display:flex; gap:8px; margin-bottom:16px;'>
-              <input type='text' placeholder=' ' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>
-              <input type='text' placeholder=' ' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>
-            </div>
-            """,
+            f"<div style='display:flex; gap:8px; margin-bottom:12px;'>"
+            f"<input type='text' placeholder='' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
+            f"<input type='text' placeholder='' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
+            f"</div>",
             unsafe_allow_html=True
         )
-        # Surpondération
-        if green_count:
-            if green_count >= 4:
-                symbols = "🔵🔵🔵"; level = "Forte"
-            elif green_count >= 2:
-                symbols = "🔵🔵"; level = "Modérée"
-            else:
-                symbols = "🔵"; level = "Faible"
-            st.markdown(f"**Surpondération**: {symbols} ({level})", unsafe_allow_html=True)
-        else:
-            st.markdown("**Surpondération**: Aucune", unsafe_allow_html=True)
-                # Indicateurs macro en 2 colonnes
+        # Deuxième ligne d'inputs
+        st.markdown(
+            f"<div style='display:flex; gap:8px; margin-bottom:12px;'>"
+            f"<input type='text' placeholder='' style='flex:1; max-width:48%; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
+            f"<input type='text' placeholder='' style='flex:1; max-width:48%; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+        # Sparkline du cours
+        fig = px.line(series, height=100)
+        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False)
+        st.plotly_chart(fig, use_container_width=True)
+        # Badges DCA
+        badges = []
+        last_price = series.iloc[-1] if not series.empty else None
+        for label, w in timeframes.items():
+            window = series.iloc[-w:]
+            avg = window.mean() if len(window) else None
+            title = f"Moyenne {label}: {avg:.2f}" if avg is not None else "N/A"
+            color_badge = "green" if avg is not None and last_price < avg else "crimson"
+            badges.append(
+                f"<span title='{title}' style='background:{color_badge};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>"
+            )
+        st.markdown(
+            f"<div style='display:flex; gap:4px; margin-top:12px;'>{''.join(badges)}</div>",
+            unsafe_allow_html=True
+        )
+        # Surpondération alignée à droite
+        st.markdown(
+            f"<div style='text-align:right; margin-top:8px; font-size:14px;'>Surpondération: <span style='color:#1f77b4'>{symbols}</span> ({level})</div>",
+            unsafe_allow_html=True
+        )
+        # Indicateurs macro en 2 colonnes
         macro_items = []
         for lbl in macro_series:
             if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -192,19 +220,19 @@ for idx, (name, series) in enumerate(price_df.items()):
                 macro_items.append(f"<li>{lbl}: {val:.2f}</li>")
             else:
                 macro_items.append(f"<li>{lbl}: N/A</li>")
-        # division en deux colonnes
         half = len(macro_items) // 2 + len(macro_items) % 2
         col1 = macro_items[:half]
         col2 = macro_items[half:]
         st.markdown(
-            """
-            <div style='display:flex; gap:40px; padding-top:12px;'>
-              <ul style='padding-left:16px'>""" + ''.join(col1) + """</ul>
-              <ul style='padding-left:16px'>""" + ''.join(col2) + """</ul>
+            f"""
+            <div style='display:flex; gap:40px; margin-top:12px;'>
+              <ul style='padding-left:16px'>{''.join(col1)}</ul>
+              <ul style='padding-left:16px'>{''.join(col2)}</ul>
             </div>
             """,
             unsafe_allow_html=True
         )
+        # Fermeture du conteneur carte
         st.markdown("</div>", unsafe_allow_html=True)
     if idx % 2 == 1:
         st.markdown(
