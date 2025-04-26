@@ -96,6 +96,11 @@ raw_weights = {
 }
 # Ajustement si dépassement du total de 50%
 total_raw = sum(raw_weights.values())
+# Indication du reste à allouer ou du dépassement
+if total_raw <= 50:
+    st.sidebar.info(f"Reste à allouer : {50 - total_raw:.1f}%")
+else:
+    st.sidebar.error(f"Dépassement de {total_raw - 50:.1f}%.")
 if total_raw > 50:
     st.sidebar.warning(
         f"Allocation ETF limitée à 50%. Vos valeurs ont été normalisées (facteur {50/total_raw:.2f})."
@@ -118,7 +123,12 @@ for idx, (name, series) in enumerate(price_df.items()):
         st.markdown(f"<div style='border:2px solid {border};padding:8px;border-radius:6px;margin-bottom:12px'>", unsafe_allow_html=True)
         delta = deltas[name]
         color = "green" if delta >= 0 else "crimson"
-        st.markdown(f"<h4>{name}: <span style='color:{color}'>{delta:.1f}%</span></h4>", unsafe_allow_html=True)
+        # Affichage du nom, valeur du jour et % de fluctuation
+        last_price = series.iloc[-1]
+        st.markdown(
+            f"<h4>{name}: {last_price:.2f} USD (<span style='color:{color}'>{delta:+.2f}%</span>)</h4>",
+            unsafe_allow_html=True
+        )
         fig = px.line(series, height=100)
         fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
         st.plotly_chart(fig, use_container_width=True)
@@ -129,13 +139,15 @@ for idx, (name, series) in enumerate(price_df.items()):
             window = series.iloc[-w:]
             avg = window.mean()
             last = series.iloc[-1]
+            # Infobulle avec moyenne de la période
+            title = f"Moyenne {label}: {avg:.2f}"
             if last < avg:
                 color_badge = "green"
                 green_count += 1
             else:
                 color_badge = "crimson"
             badges.append(
-                f"<span style='background:{color_badge};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>"
+                f"<span title='{title}' style='background:{color_badge};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>"
             )
         st.markdown(''.join(badges), unsafe_allow_html=True)
         # Indicateur de surpondération : plus de périodes vertes = plus fort
