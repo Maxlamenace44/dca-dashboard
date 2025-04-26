@@ -73,7 +73,7 @@ with st.spinner("Chargement des données..."):
     if not st.secrets.get('FRED_API_KEY'):
         st.error("🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour que les indicateurs macro fonctionnent.")
     price_df = fetch_etf_prices(etfs)
-    macro_df = fetch_macro_data(macro_series)(macro_series)
+    macro_df = fetch_macro_data(macro_series)
 
 deltas = {name: pct_change(series) for name, series in price_df.items()}
 
@@ -193,3 +193,9 @@ for th in [15, 10, 5]:
 
 st.markdown("---")
 st.markdown("DCA Dashboard généré automatiquement.")
+
+# Affichage de l'erreur de clé FRED en bas sans bloquer l'app
+if not st.secrets.get('FRED_API_KEY'):
+    st.error(
+        "🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour que les indicateurs macro fonctionnent."
+    )
