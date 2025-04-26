@@ -69,38 +69,20 @@ green_counts = compute_green_counts(price_df)
 try:
     vix_3m = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
     fig_vix = px.line(vix_3m, height=150)
-    fig_vix.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        xaxis_showgrid=False,
-        yaxis_showgrid=False,
-        showlegend=False
-    )
+    fig_vix.update_layout(margin=dict(l=0,r=0,t=0,b=0),xaxis_showgrid=False,yaxis_showgrid=False,showlegend=False)
     st.sidebar.subheader("VIX (3 mois)")
     st.sidebar.plotly_chart(fig_vix, use_container_width=True)
-    # Metric dernière valeur VIX
-    vix_latest = vix_3m.iloc[-1]
-    vix_prev = vix_3m.iloc[-2] if len(vix_3m) > 1 else None
-    if vix_prev is not None:
-        st.sidebar.metric(
-            "VIX (Dernière séance)",
-            f"{vix_latest:.2f}",
-            f"{vix_latest - vix_prev:+.2f}",
-            delta_color="inverse"
-        )
+    # Metric dernière séance VIX
+    if len(vix_3m) >= 2:
+        vix_latest = vix_3m.iloc[-1]
+        vix_prev = vix_3m.iloc[-2]
+        st.sidebar.metric("VIX (Dernière séance)", f"{vix_latest:.2f}", f"{vix_latest-vix_prev:+.2f}", delta_color="inverse")
     else:
-        st.sidebar.metric("VIX (Dernière séance)", f"{vix_latest:.2f}")
+        st.sidebar.metric("VIX (Dernière séance)", f"{vix_3m.iloc[-1]:.2f}")
 except Exception:
-    st.sidebar.write("VIX non disponible")(fig_vix, use_container_width=True)
-except:
-    st.sidebar.write("VIX 3 mois non disponible")
+    st.sidebar.write("VIX non disponible")
 
 # Sidebar: Contrôles
-try:
-    vix_latest = yf.download('^VIX', period='2d', progress=False)['Adj Close']
-    st.sidebar.metric("VIX (Dernière séance)", f"{vix_latest.iloc[-1]:.2f}", f"{vix_latest.iloc[-1]-vix_latest.iloc[-2]:+.2f}", delta_color="inverse")
-except:
-    pass
-
 st.sidebar.header("Paramètres de rééquilibrage")
 threshold = st.sidebar.slider("Seuil de déviation (%)",5,30,15,5)
 st.sidebar.header("Allocation dynamique (%)")
