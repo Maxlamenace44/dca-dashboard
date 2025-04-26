@@ -10,26 +10,9 @@ from streamlit.components.v1 import html
 st.set_page_config(page_title="Dashboard DCA ETF", layout="wide")
 
 # --- CONSTANTES ---
-etfs = {
-    'S&P500': 'SPY', 'NASDAQ100': 'QQQ', 'CAC40': 'CAC.PA', 'EURO STOXX50': 'FEZ',
-    'EURO STOXX600 TECH': 'EXV3.DE',
-    'NIKKEI 225': '^N225',
-    'WORLD': 'VT',
-    'EMERGING': 'EEM'
-}
-timeframes = {
-    'Hebdo': 5,
-    'Mensuel': 21,
-    'Trimestriel': 63,
-    'Annuel': 252,
-    '5 ans': 1260
-}
-macro_series = {
-    'CAPE10': 'CAPE',
-    'Fed Funds Rate': 'FEDFUNDS',
-    'CPI YoY': 'CPIAUCSL',
-    'ECY': 'DGS10'
-}
+etfs = {'S&P500':'SPY','NASDAQ100':'QQQ','CAC40':'CAC.PA','EURO STOXX50':'FEZ','EURO STOXX600 TECH':'EXV3.DE','NIKKEI 225':'^N225','WORLD':'VT','EMERGING':'EEM'}
+timeframes = {'Hebdo':5,'Mensuel':21,'Trimestriel':63,'Annuel':252,'5 ans':1260}
+macro_series = {'CAPE10':'CAPE','Fed Funds Rate':'FEDFUNDS','CPI YoY':'CPIAUCSL','ECY':'DGS10'}
 
 # --- FONCTIONS DE RÉCUPÉRATION DES DONNÉES ---
 @st.cache_data(show_spinner=False)
@@ -164,34 +147,4 @@ for idx, (name, series) in enumerate(price_df.items()):
             items.append(f"<li>{lbl}: N/A</li>")
     half = len(items)//2 + len(items)%2
     left_html = ''.join(items[:half])
-    right_html = ''.join(items[half:]) "".join(items[half:])
-
-    # Assemble card HTML
-    card_html = f'''
-<div style="border:3px solid {border}; border-radius:12px; padding:12px; margin:4px 0; background-color:white; overflow:auto;">
-  <h4 style="margin:4px 0;">{name}: {price_str} <span style="color:{perf_color}">{delta:+.2f}%</span></h4>
-  {fig_html}
-  <div style="margin:8px 0; display:flex; gap:4px;">{badges_html}</div>
-  <div style="text-align:right; font-size:13px;">Surpondération: <span style="color:#1f77b4">{'🔵'*gc}</span></div>
-  <div style="display:flex; gap:40px; margin-top:8px; font-size:12px;">
-    <ul style="margin:0; padding-left:16px;">{left_html}</ul>
-    <ul style="margin:0; padding-left:16px;">{right_html}</ul>
-  </div>
-</div>
-'''
-
-    with cols[idx % 2]:
-        html(card_html, height=360)
-
-    # Arbitrage alerts
-    if idx % 2 == 1 and thresholds:
-        for t in sorted(thresholds, reverse=True):
-            pairs = [(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
-            if pairs:
-                st.warning(f"Écart > {t}% détecté :")
-                for i,j,d in pairs:
-                    st.write(f"- {i} vs {j}: {d:.1f}%")
-
-# FRED warning and end
-if not st.secrets.get('FRED_API_KEY'):
-    st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
+        right_html = ''.join(items[half:])
