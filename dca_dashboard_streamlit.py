@@ -145,6 +145,5 @@ for idx, (name, series) in enumerate(price_df.items()):
             items.append(f"<li>{lbl}: {val:.2f}</li>")
         else:
             items.append(f"<li>{lbl}: N/A</li>")
-    half = len(items)//2 + len(items)%2
-    left_html = ''.join(items[:half])
-        right_html = ''.join(items[half:])
+    half = len(items)//2 + len(items)%2    left_html = ''.join(items[:half])
+    right_html = ''.join(items[half:])
