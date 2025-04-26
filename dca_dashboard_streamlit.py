@@ -124,24 +124,27 @@ for idx, (name, series) in enumerate(price_df.items()):
     gc = green_counts[name]
     border = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
 
-    # Graph HTML
+    # Prepare sparkline HTML
     fig = px.line(series, height=120)
     fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
-    chart_html = fig.to_html(include_plotlyjs=False, full_html=False)
+    fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
     # Badges DCA
-    badges = []
+    badges_html = ""
     if last is not None:
+        badge_list = []
         for lbl, w in timeframes.items():
             if len(series) >= w:
                 avg = series.iloc[-w:].mean()
-                bg = 'green' if last < avg else 'crimson'
-                badges.append(f"<span title='Moyenne {lbl}: {avg:.2f}'"
-                              f" style='background:{bg};color:white;padding:3px 6px;"
-                              "border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>")
-    badges_html = ''.join(badges)
+                bg = "green" if last < avg else "crimson"
+                title = f"Moyenne {lbl}: {avg:.2f}"
+                badge_list.append(
+                    f"<span title='{title}' style='background:{bg};color:white;padding:3px 6px;"
+                    f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+                )
+        badges_html = "".join(badge_list)
 
-    # Macro deux colonnes
+    # Macro indicators two columns
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -150,22 +153,22 @@ for idx, (name, series) in enumerate(price_df.items()):
         else:
             items.append(f"<li>{lbl}: N/A</li>")
     half = len(items)//2 + len(items)%2
-    left = ''.join(items[:half])
-    right = ''.join(items[half:])
+    left_html = "".join(items[:half])
+    right_html = "".join(items[half:])
 
-    # Assemble card
-    card_html = f"""
-    <div style='border:3px solid {border};border-radius:12px;padding:12px;margin:6px 0;background:white;'>
-      <h4 style='margin:4px 0'>{name}: {price_str} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>
-      {chart_html}
-      <div style='margin:8px 0;display:flex;gap:4px;'>{badges_html}</div>
-      <div style='text-align:right;font-size:13px;'>Surpondération: <span style='color:#1f77b4'>{'🔵'*gc}</span></div>
-      <div style='display:flex;gap:40px;margin-top:8px;font-size:12px;'>
-        <ul style='margin:0;padding-left:16px'>{left}</ul>
-        <ul style='margin:0;padding-left:16px'>{right}</ul>
-      </div>
-    </div>
-    """
+    # Assemble card HTML
+    card_html = f'''
+<div style="border:3px solid {border}; border-radius:12px; padding:12px; margin:4px 0; background-color:white; overflow:auto;">
+  <h4 style="margin:4px 0;">{name}: {price_str} <span style="color:{perf_color}">{delta:+.2f}%</span></h4>
+  {fig_html}
+  <div style="margin:8px 0; display:flex; gap:4px;">{badges_html}</div>
+  <div style="text-align:right; font-size:13px;">Surpondération: <span style="color:#1f77b4">{'🔵'*gc}</span></div>
+  <div style="display:flex; gap:40px; margin-top:8px; font-size:12px;">
+    <ul style="margin:0; padding-left:16px;">{left_html}</ul>
+    <ul style="margin:0; padding-left:16px;">{right_html}</ul>
+  </div>
+</div>
+'''
 
     with cols[idx % 2]:
         html(card_html, height=360)
