@@ -37,7 +37,6 @@ macro_series = {
 # --- FONCTIONS DE RÉCUPÉRATION DES DONNÉES ---
 @st.cache_data(show_spinner=False)
 def fetch_etf_prices(symbols, days=5*365):
-    """Télécharge les prix ajustés des ETF sur la durée donnée."""
     end = datetime.today()
     start = end - timedelta(days=days)
     df = pd.DataFrame()
@@ -48,7 +47,6 @@ def fetch_etf_prices(symbols, days=5*365):
 
 @st.cache_data(show_spinner=False)
 def fetch_macro_data(series_dict, days=5*365):
-    """Récupère les séries FRED ou retourne un DataFrame vide si pas de clé."""
     key = st.secrets.get('FRED_API_KEY', '')
     if not key:
         return pd.DataFrame(columns=series_dict.keys())
@@ -65,13 +63,11 @@ def fetch_macro_data(series_dict, days=5*365):
 
 # --- UTILITAIRES ---
 def pct_change(series):
-    """Calcule la variation en % entre les deux dernières valeurs."""
     if len(series) < 2:
         return 0.0
     return float((series.iloc[-1] / series.iloc[-2] - 1) * 100)
 
 def compute_green_counts(df):
-    """Compte pour chaque ETF le nombre de périodes où la valeur actuelle < moyenne."""
     counts = {}
     for name in df.columns:
         series = df[name]
@@ -82,10 +78,8 @@ def compute_green_counts(df):
         counts[name] = cnt
     return counts
 
-# --- INTERFACE ET CHARGEMENT ---
+# --- INTERFACE ---
 st.title("Dashboard DCA ETF")
-
-# Refresh button
 if st.sidebar.button("🔄 Rafraîchir les données"):
     st.cache_data.clear()
 
@@ -93,16 +87,13 @@ with st.spinner("Chargement des données…"):
     price_df = fetch_etf_prices(etfs)
     macro_df = fetch_macro_data(macro_series)
 
-# Calcul des indicateurs
-deltas = {name: pct_change(series) for name, series in price_df.items()}
+# Calculs
+deltas = {n: pct_change(s) for n, s in price_df.items()}
 green_counts = compute_green_counts(price_df)
 
-# Sidebar controls
+# Sidebar
 st.sidebar.header("Paramètres de rééquilibrage")
-threshold = st.sidebar.slider(
-    "Seuil de déviation (%)", 5, 30, 15, 5,
-    help="Écart max entre part réelle et cible avant alerte."
-)
+threshold = st.sidebar.slider("Seuil de déviation (%)", 5, 30, 15, 5)
 
 st.sidebar.header("Allocation dynamique (%)")
 total_green = sum(green_counts.values()) or 1
@@ -110,48 +101,47 @@ for name, cnt in green_counts.items():
     alloc = (cnt / total_green) * 50
     arrow = "▲" if cnt > 0 else ""
     color_arrow = "#28a745" if cnt > 0 else "#888"
-    st.sidebar.markdown(
-        f"**{name}**: {alloc:.1f}% <span style='color:{color_arrow}'>{arrow}{cnt}</span>",
-        unsafe_allow_html=True
-    )
+    st.sidebar.markdown(f"**{name}**: {alloc:.1f}% <span style='color:{color_arrow}'>{arrow}{cnt}</span>",
+                         unsafe_allow_html=True)
 
-# VIX display
+# VIX
 try:
     vix = yf.download('^VIX', period='2d', progress=False)['Adj Close']
     st.sidebar.metric("VIX", f"{vix.iloc[-1]:.2f}", f"{vix.iloc[-1]-vix.iloc[-2]:+.2f}")
 except Exception:
     st.sidebar.write("VIX non disponible")
 
-# Arbitrage thresholds
 st.sidebar.header("Seuils arbitrage")
-thresholds = st.sidebar.multiselect(
-    "Choisir seuils (%)", [1, 5, 10, 15, 20, 25], default=[5, 10, 15],
-    help="Alerte si écart de performance entre indices > seuil."
-)
+thresholds = st.sidebar.multiselect("Choisir seuils (%)", [5,10,15,20,25], default=[5,10,15])
 
-# --- AFFICHAGE PRINCIPAL ---
+# Main display
 cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
     delta = deltas[name]
-    color_perf = "green" if delta >= 0 else "crimson"
+    perf_color = "green" if delta >= 0 else "crimson"
     last = series.iloc[-1] if len(series) else None
     price_str = f"{last:.2f} USD" if last is not None else "N/A"
     gc = green_counts[name]
     border = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
 
-    # Préparer graphique HTML
+    # Graph HTML
     fig = px.line(series, height=120)
-    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False)
-    fig_html = fig.to_html(include_plotlyjs=False, full_html=False)
+    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
+    chart_html = fig.to_html(include_plotlyjs=False, full_html=False)
 
     # Badges DCA
-    badges_html = "".join([
-        f"<span title='Moyenne {lbl}: {series.iloc[-w:].mean():.2f}' style='background:{'green' if series.iloc[-1]<series.iloc[-w:].mean() else 'crimson'};"
-        "color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
-        for lbl, w in timeframes.items() if len(series) >= w
-    ])
+    badges = []
+    if last is not None:
+        for lbl, w in timeframes.items():
+            if len(series) >= w:
+                avg = series.iloc[-w:].mean()
+                bg = 'green' if last < avg else 'crimson'
+                badges.append(f"<span title='Moyenne {lbl}: {avg:.2f}'"
+                              f" style='background:{bg};color:white;padding:3px 6px;"
+                              "border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>")
+    badges_html = ''.join(badges)
 
-    # Indicateurs macro deux colonnes
+    # Macro deux colonnes
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -163,11 +153,11 @@ for idx, (name, series) in enumerate(price_df.items()):
     left = ''.join(items[:half])
     right = ''.join(items[half:])
 
-    # Assemblage carte
+    # Assemble card
     card_html = f"""
-    <div style='border:3px solid {border};border-radius:12px;padding:16px;margin:8px 0;background:white;overflow:auto;'>
-      <h4 style='margin:4px 0'>{name}: {price_str} <span style='color:{color_perf}'>{delta:+.2f}%</span></h4>
-      {fig_html}
+    <div style='border:3px solid {border};border-radius:12px;padding:12px;margin:6px 0;background:white;'>
+      <h4 style='margin:4px 0'>{name}: {price_str} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>
+      {chart_html}
       <div style='margin:8px 0;display:flex;gap:4px;'>{badges_html}</div>
       <div style='text-align:right;font-size:13px;'>Surpondération: <span style='color:#1f77b4'>{'🔵'*gc}</span></div>
       <div style='display:flex;gap:40px;margin-top:8px;font-size:12px;'>
@@ -178,19 +168,17 @@ for idx, (name, series) in enumerate(price_df.items()):
     """
 
     with cols[idx % 2]:
-        html(card_html, height=400)
+        html(card_html, height=360)
 
-    # Alertes arbitrage après deux cartes
+    # Arbitrage alerts
     if idx % 2 == 1 and thresholds:
         for t in sorted(thresholds, reverse=True):
-            pairs = [(i, j, abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
+            pairs = [(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
             if pairs:
                 st.warning(f"Écart > {t}% détecté :")
-                for i, j, d in pairs:
+                for i,j,d in pairs:
                     st.write(f"- {i} vs {j}: {d:.1f}%")
 
-# Message d’avertissement FRED en pied
+# FRED warning and end
 if not st.secrets.get('FRED_API_KEY'):
-    st.warning(
-        "🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets de Streamlit Cloud pour activer les indicateurs macro."
-    )
+    st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
