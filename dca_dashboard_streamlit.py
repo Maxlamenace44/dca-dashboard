@@ -10,7 +10,7 @@ st.set_page_config(page_title="DCA Portfolio Dashboard", layout="wide")
 
 # --- CONSTANTES / PARAMÈTRES ---
 etfs = {
-    'SP500': 'SPY',
+    'S&P500': 'SPY',
     'NASDAQ100': 'QQQ',
     'CAC40': 'CAC.PA',
     'EURO STOXX50': 'FEZ',
@@ -83,18 +83,31 @@ threshold_alloc = st.sidebar.slider(
 )
 
 st.sidebar.header("Allocation cible (%)")
+# Saisie des allocations (en % de l'univers ETF, max 50% du portefeuille)
 raw_weights = {
     name: st.sidebar.number_input(
         name,
         min_value=0.0,
         max_value=50.0,
         value=50/len(etfs),
-        help=f"Allocation cible pour {name} (max 50% de l'actif total)."
+        help=f"Allocation cible pour {name} (max 50% de l'actif total, réparti sur les ETF)."
     )
     for name in etfs
 }
-total = sum(raw_weights.values()) or 1
-target_weights = {k: v/total for k, v in raw_weights.items()}
+# Ajustement si dépassement du total de 50%
+total_raw = sum(raw_weights.values())
+if total_raw > 50:
+    st.sidebar.warning(
+        f"Allocation ETF limitée à 50%. Vos valeurs ont été normalisées (facteur {50/total_raw:.2f})."
+    )
+    # Mise à l'échelle
+    scaled_raw = {k: v * (50/total_raw) for k, v in raw_weights.items()}
+else:
+    scaled_raw = raw_weights
+# Normalisation interne pour calcul des poids relatifs
+sum_scaled = sum(scaled_raw.values()) or 1
+# target_weights = proportions internes pour rééquilibrage
+target_weights = {k: v / sum_scaled for k, v in scaled_raw.items()}
 
 # --- AFFICHAGE PRINCIPAL ---
 cols = st.columns(2)
