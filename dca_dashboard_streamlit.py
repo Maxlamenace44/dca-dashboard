@@ -69,8 +69,11 @@ def is_recent_low(series, window):
 # --- CHARGEMENT DES DONNÉES ---
 st.title("Dashboard DCA ETF")
 with st.spinner("Chargement des données..."):
+    # Vérification de la configuration de la clé FRED
+    if not st.secrets.get('FRED_API_KEY'):
+        st.error("🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour que les indicateurs macro fonctionnent.")
     price_df = fetch_etf_prices(etfs)
-    macro_df = fetch_macro_data(macro_series)
+    macro_df = fetch_macro_data(macro_series)(macro_series)
 
 deltas = {name: pct_change(series) for name, series in price_df.items()}
 
@@ -120,8 +123,6 @@ for idx, (name, series) in enumerate(price_df.items()):
     with col:
         st.markdown(
             f"<div style='border:2px solid {border};padding:16px;border-radius:8px;margin:10px 0;background-color:#fff;box-sizing:border-box;'>",
-            unsafe_allow_html=True
-        ),
             unsafe_allow_html=True
         )
         # En-tête
