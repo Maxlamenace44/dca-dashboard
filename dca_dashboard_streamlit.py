@@ -16,6 +16,7 @@ etfs = {
     'CAC40': 'CAC.PA',
     'EURO STOXX50': 'FEZ',
     'EURO STOXX600 TECH': 'EXV3.DE',
+    'NIKKEI 225': '^N225',
     'WORLD': 'VT',
     'EMERGING': 'EEM'
 }
