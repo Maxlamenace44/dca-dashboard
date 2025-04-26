@@ -125,7 +125,7 @@ for name, alloc in dynamic_alloc.items():
     arrow = "" if periods == 0 else "▲"
     color_arrow = "#28a745" if periods > 0 else "#888"
     st.sidebar.markdown(
-        f"<div style='margin-bottom:4px; font-size:14px;'>"
+        f"<div style='margin-bottom:4px; font-size:16px;'>"
         f"<strong>{name}</strong>: "
         f"<span style='color:#1f77b4'>{alloc:.1f}%</span> "
         f"<span style='color:{color_arrow}'>{arrow}{periods}</span> "
@@ -138,7 +138,7 @@ target_weights = {k: v / sum(dynamic_alloc.values()) for k, v in dynamic_alloc.i
 
 # Seuils d'arbitrage dynamiques
 st.sidebar.header("Seuils arbitrage entre indices")
-available_thresholds = [5, 10, 15, 20, 25]
+available_thresholds = [1, 5, 10, 15, 20, 25]
 selected_thresholds = st.sidebar.multiselect(
     "Choisissez les seuils (%)",
     options=available_thresholds,
@@ -146,18 +146,18 @@ selected_thresholds = st.sidebar.multiselect(
     help="Seuils à partir desquels déclencher une alerte pour écart de performance entre deux indices."
 )
 
-# AFFICHAGE PRINCIPAL
+# --- AFFICHAGE PRINCIPAL ---
 cols = st.columns(2)
 for idx, (name, series) in enumerate(price_df.items()):
     green_count = green_counts[name]
-    # Détermination de la couleur de bordure
+    # Couleur du cadre selon surpondération
     if green_count >= 4:
         border = "#28a745"
     elif green_count >= 2:
         border = "#ffc107"
     else:
         border = "#dc3545"
-    # Calcul du niveau de surpondération
+    # Niveau de surpondération
     if green_count >= 4:
         symbols = "🔵🔵🔵"; level = "Forte"
     elif green_count >= 2:
@@ -167,76 +167,61 @@ for idx, (name, series) in enumerate(price_df.items()):
 
     col = cols[idx % 2]
     with col:
-        # Conteneur principal de la carte
+        # Carte principale
         st.markdown(
-            f"<div style='border:3px solid {border}; border-radius:12px; padding:16px; margin:15px 5px; background-color:white; max-height:400px; overflow:auto;'>",
+            f"<div style='border:3px solid {border}; border-radius:12px; padding:12px; margin:10px; background-color:white; max-height:360px; overflow:auto;'>",
             unsafe_allow_html=True
         )
-        # Première ligne d'inputs
+        # Titre et performance
+        delta = deltas[name]
+        color = "green" if delta >= 0 else "crimson"
+        last_price = series.iloc[-1] if not series.empty else None
+        price_str = f"{last_price:.2f} USD" if last_price is not None else "N/A"
         st.markdown(
-            f"<div style='display:flex; gap:8px; margin-bottom:12px;'>"
-            f"<input type='text' placeholder='' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
-            f"<input type='text' placeholder='' style='flex:1; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
-            f"</div>",
+            f"<h4 style='margin:4px 0'>{name}: {price_str} (<span style='color:{color}'>{delta:+.2f}%</span>)</h4>",
             unsafe_allow_html=True
         )
-        # Deuxième ligne d'inputs
-        st.markdown(
-            f"<div style='display:flex; gap:8px; margin-bottom:12px;'>"
-            f"<input type='text' placeholder='' style='flex:1; max-width:48%; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
-            f"<input type='text' placeholder='' style='flex:1; max-width:48%; border:2px solid {border}; padding:4px; border-radius:4px;'/>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-        # Sparkline du cours
-        fig = px.line(series, height=100)
-        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), xaxis_showgrid=False, yaxis_showgrid=False)
+        # Graphique sparkline
+        fig = px.line(series, height=90)
+        fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
         st.plotly_chart(fig, use_container_width=True)
         # Badges DCA
-        badges = []
-        last_price = series.iloc[-1] if not series.empty else None
-        for label, w in timeframes.items():
-            window = series.iloc[-w:]
-            avg = window.mean() if len(window) else None
-            title = f"Moyenne {label}: {avg:.2f}" if avg is not None else "N/A"
-            color_badge = "green" if avg is not None and last_price < avg else "crimson"
-            badges.append(
-                f"<span title='{title}' style='background:{color_badge};color:white;padding:3px 6px;border-radius:3px;margin-right:4px'>{label}</span>"
-            )
-        st.markdown(
-            f"<div style='display:flex; gap:4px; margin-top:12px;'>{''.join(badges)}</div>",
-            unsafe_allow_html=True
-        )
+        badges_html = ''.join([
+            f"<span title='Moyenne {label}: {series.iloc[-w:].mean():.2f}' "
+            f"style='background:{('green' if series.iloc[-1] < series.iloc[-w:].mean() else 'crimson')};"
+            f"color:white;padding:2px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{label}</span>"
+            for label, w in timeframes.items()
+        ])
+        st.markdown(f"<div style='margin-top:8px'>{badges_html}</div>", unsafe_allow_html=True)
         # Surpondération alignée à droite
         st.markdown(
-            f"<div style='text-align:right; margin-top:8px; font-size:14px;'>Surpondération: <span style='color:#1f77b4'>{symbols}</span> ({level})</div>",
+            f"<div style='text-align:right; font-size:13px;margin-top:6px;'>Surpondération: "
+            f"<span style='color:#1f77b4'>{symbols}</span> ({level})</div>",
             unsafe_allow_html=True
         )
-        # Indicateurs macro en 2 colonnes
-        macro_items = []
+        # Indicateurs macro en deux colonnes
+        items = []
         for lbl in macro_series:
             if lbl in macro_df and not macro_df[lbl].dropna().empty:
                 val = macro_df[lbl].dropna().iloc[-1]
-                macro_items.append(f"<li>{lbl}: {val:.2f}</li>")
+                items.append(f"<li>{lbl}: {val:.2f}</li>")
             else:
-                macro_items.append(f"<li>{lbl}: N/A</li>")
-        half = len(macro_items) // 2 + len(macro_items) % 2
-        col1 = macro_items[:half]
-        col2 = macro_items[half:]
+                items.append(f"<li>{lbl}: N/A</li>")
+        half = len(items)//2 + len(items)%2
+        col1, col2 = items[:half], items[half:]
         st.markdown(
-            f"""
-            <div style='display:flex; gap:40px; margin-top:12px;'>
-              <ul style='padding-left:16px'>{''.join(col1)}</ul>
-              <ul style='padding-left:16px'>{''.join(col2)}</ul>
-            </div>
-            """,
+            f"<div style='display:flex; gap:20px; margin-top:8px;'>"
+            f"<ul style='padding-left:16px;margin:0'>{''.join(col1)}</ul>"
+            f"<ul style='padding-left:16px;margin:0'>{''.join(col2)}</ul>"
+            f"</div>",
             unsafe_allow_html=True
         )
-        # Fermeture du conteneur carte
+        # Fin carte
         st.markdown("</div>", unsafe_allow_html=True)
+    # Ligne d'arbitrage entre paires
     if idx % 2 == 1:
         st.markdown(
-            f"<h3 style='text-align:center;color:orange;'>➡️ Arbitrage si déviation > {threshold_alloc}% ⬅️</h3>",
+            f"<h3 style='text-align:center;color:orange;margin-top:10px;'>➡️ Arbitrage si déviation > {threshold_alloc}% ⬅️</h3>",
             unsafe_allow_html=True
         )
 
