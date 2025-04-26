@@ -205,7 +205,7 @@ for idx, (name, series) in enumerate(price_df.items()):
             """,
             unsafe_allow_html=True
         )
-        st.markdown("</div>", unsafe_allow_html=True), unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
     if idx % 2 == 1:
         st.markdown(
             f"<h3 style='text-align:center;color:orange;'>➡️ Arbitrage si déviation > {threshold_alloc}% ⬅️</h3>",
