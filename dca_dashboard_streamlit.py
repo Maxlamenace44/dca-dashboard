@@ -81,13 +81,13 @@ if st.sidebar.button("🔄 Rafraîchir les données"):
 with st.spinner("Chargement des données..."):
     price_df = fetch_etf_prices(etfs)
     macro_df = fetch_macro_data(macro_series)
-
-# Alerte clé FRED en bas si manquante
-authority = st.secrets.get('FRED_API_KEY')
-if not authority:
-    st.warning(
-        "🔑 Clé FRED_API_KEY manquante : configurez-la dans les secrets Streamlit Cloud pour activer les indicateurs macro."
-    )
+    # Récupération du VIX
+    try:
+        vix_df = yf.download('^VIX', period='2d', progress=False)['Adj Close']
+        vix_last = vix_df.iloc[-1]
+        vix_prev = vix_df.iloc[-2] if len(vix_df) > 1 else None
+    except Exception:
+        vix_last, vix_prev = None, None
 
 # Calculs de base
 deltas = {name: pct_change(series) for name, series in price_df.items()}
@@ -110,11 +110,14 @@ st.sidebar.header("Allocation cible dynamique (%)")
 total_greens = sum(green_counts.values()) or 1
 dynamic_alloc = {name: (count / total_greens) * 50 for name, count in green_counts.items()}
 for name, alloc in dynamic_alloc.items():
+    # Affichage de la metric avec % et nombre de périodes vertes à côté
+    periods = green_counts[name]
     st.sidebar.metric(
         label=name,
-        value=f"{alloc:.1f}%",
-        delta=f"{green_counts[name]} périodes vertes"
+        value=f"{alloc:.1f}% — {periods} périodes vertes",
+        delta=None
     )
+# Poids cibles normalisés pour le calcul interne
 target_weights = {k: v / sum(dynamic_alloc.values()) for k, v in dynamic_alloc.items()}
 
 # Seuils d'arbitrage dynamiques
@@ -141,7 +144,7 @@ for idx, (name, series) in enumerate(price_df.items()):
 
     with cols[idx % 2]:
         st.markdown(
-            f"<div style='border:2px solid {border};padding:16px;border-radius:8px;margin:10px 0;background-color:#fff;box-sizing:border-box;'>",
+            f"<div style='border:3px solid {border}; border-radius:12px; padding:16px; margin:15px 5px; background-color:white;'>",
             unsafe_allow_html=True
         )
         # En-tête: valeur et fluctuation
