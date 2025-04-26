@@ -100,7 +100,7 @@ try:
 except Exception:
     st.sidebar.write("VIX non disponible")
 st.sidebar.header("Seuils arbitrage")
-thresholds = st.sidebar.multiselect("Choisir seuils (%)", [5,10,15,20,25], default=[5,10,15])
+thresholds = st.sidebar.multiselect("Choisir seuils (%)", [1,5,10,15,20,25], default=[5,10,15])
 
 # --- AFFICHAGE PRINCIPAL ---
 cols = st.columns(2)
@@ -113,7 +113,7 @@ for idx, (name, series) in enumerate(price_df.items()):
     border = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
 
         # Sparkline HTML
-    fig = px.line(series, height=170)
+    fig = px.line(series, height=200)
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
         xaxis_showgrid=False,
@@ -164,7 +164,7 @@ for idx, (name, series) in enumerate(price_df.items()):
 </div>
 '''    
     with cols[idx % 2]:
-        html(card_html, height=350)
+        html(card_html, height=300)
     # Arbitrage alerts
     if idx % 2 == 1 and thresholds:
         for t in sorted(thresholds, reverse=True):
