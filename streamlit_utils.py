@@ -6,19 +6,15 @@ import streamlit as st
 
 CSS = """
 <link rel="stylesheet" href="../css/styles.css">
-<style>
-/* Si besoin, override ici */
-</style>
+<style> /* … */ </style>
 """
 
 def inject_css():
-    """Injecte le CSS global pour les cartes."""
     st.markdown(CSS, unsafe_allow_html=True)
 
-def begin_card(container):
-    """Ouvre une <div class='card'> dans le container."""
-    container.markdown("<div class='card'>", unsafe_allow_html=True)
+def begin_card():
+    # on ne passe plus de container : ça utilisera le contexte courant (colonne ou container)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-def end_card(container):
-    """Ferme la div de la carte."""
-    container.markdown("</div>", unsafe_allow_html=True)
+def end_card():
+    st.markdown("</div>", unsafe_allow_html=True)
