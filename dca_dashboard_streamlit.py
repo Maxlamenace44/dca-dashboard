@@ -115,62 +115,64 @@ thresholds = st.sidebar.multiselect(
 cols = st.columns(2)
 for idx, name in enumerate(etfs):
     series_full = prices_full[name]
+    # carte
+    with cols[idx % 2]:
+        # Sélection de la période via badges interactifs
+        badge_cols = st.columns(len(timeframes))
+        for i, (lbl, w) in enumerate(timeframes.items()):
+            if badge_cols[i].button(lbl, key=f"btn_{name}_{lbl}"):
+                st.session_state[f"window_{name}"] = lbl
+        sel = st.session_state[f"window_{name}"]
+        window = timeframes[sel]
+        data_plot = series_full.tail(window)
 
-    # Période via boutons badge
-    tf_cols = st.columns(len(timeframes))
-    for i, (lbl, w) in enumerate(timeframes.items()):
-        if tf_cols[i].button(lbl, key=f"btn_{name}_{lbl}"):
-            st.session_state[f"window_{name}"] = lbl
-    sel = st.session_state[f"window_{name}"]
-    window = timeframes[sel]
-    data_plot = series_full.tail(window)
+        # Prix et variation
+        last = series_full.iloc[-1]
+        price_str = f"{last:.2f} USD"
+        delta = deltas[name]
+        perf_color = 'green' if delta>=0 else 'crimson'
+        gc = green_counts[name]
+        border = '#28a745' if gc>=4 else '#ffc107' if gc>=2 else '#dc3545'
 
-    # Prix et variation
-    last = series_full.iloc[-1]
-    price_str = f"{last:.2f} USD"
-    delta = deltas[name]
-    perf_color = 'green' if delta>=0 else 'crimson'
-    gc = green_counts[name]
-    border = '#28a745' if gc>=4 else '#ffc107' if gc>=2 else '#dc3545'
-
-    # Graphique sparkline
-    fig = px.line(data_plot, height=200)
-    fig.update_layout(
-        margin=dict(l=0,r=0,t=0,b=0),
-        showlegend=False,
-        xaxis_title='Date',
-        yaxis_title='Valeur'
-    )
-    chart_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
-
-    # Badges DCA
-    badges = []
-    for lbl, w in timeframes.items():
-        if len(series_full)>=w:
-            avg = series_full.iloc[-w:].mean()
-            color_bg = 'green' if last<avg else 'crimson'
-            title = f"Moyenne {lbl}: {avg:.2f}"
-        else:
-            color_bg = 'crimson'
-            title = f"Pas assez de données pour {lbl}"
-        badges.append(
-            f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+        # Sparkline chart
+        fig = px.line(data_plot, height=200)
+        fig.update_layout(
+            margin=dict(l=0,r=0,t=0,b=0),
+            showlegend=False,
+            xaxis_title='Date',
+            yaxis_title='Valeur'
         )
-    badges_html = ''.join(badges)
+        chart_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-    # Macro deux colonnes
-    items = []
-    for lbl in macro_series:
-        if lbl in macro_df and not macro_df[lbl].dropna().empty:
-            val = macro_df[lbl].dropna().iloc[-1]
-            items.append(f"<li>{lbl}: {val:.2f}</li>")
-        else:
-            items.append(f"<li>{lbl}: N/A</li>")
-    half = len(items)//2 + len(items)%2
-    left_html = ''.join(items[:half])
-    right_html = ''.join(items[half:])
+        # Badges DCA
+        badges = []
+        for lbl, w in timeframes.items():
+            if len(series_full)>=w:
+                avg = series_full.iloc[-w:].mean()
+                color_bg = 'green' if last<avg else 'crimson'
+                title = f"Moyenne {lbl}: {avg:.2f}"
+            else:
+                color_bg = 'crimson'
+                title = f"Pas assez de données pour {lbl}"
+            badges.append(
+                f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;"  
+                f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+            )
+        badges_html = ''.join(badges)
 
-    # Assemblage carte
+        # Macro deux colonnes
+        items = []
+        for lbl in macro_series:
+            if lbl in macro_df and not macro_df[lbl].dropna().empty:
+                val = macro_df[lbl].dropna().iloc[-1]
+                items.append(f"<li>{lbl}: {val:.2f}</li>")
+            else:
+                items.append(f"<li>{lbl}: N/A</li>")
+        half = len(items)//2 + len(items)%2
+        left_html = ''.join(items[:half])
+        right_html = ''.join(items[half:])
+
+        # Assemblage carte
     card_html = f'''
 <div style="border:3px solid {border};border-radius:12px;padding:12px;margin:6px;background:white;overflow:auto;">
   <h4 style="margin:4px 0">{name}: {price_str} <span style="color:{perf_color}">{delta:+.2f}%</span></h4>
