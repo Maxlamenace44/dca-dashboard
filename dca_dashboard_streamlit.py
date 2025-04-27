@@ -95,7 +95,7 @@ def score_and_style(diff: float, threshold_pct: float) -> Tuple[float, str, str]
 st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
-threshold_pct = st.sidebar.slider("Seuil déviation (%)", 1, 20, 10, 5)
+threshold_pct = st.sidebar.slider("Seuil déviation (%)", 0, 20, 5, 1)
 arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
 debug_surp = st.sidebar.checkbox("Afficher débogage surpondération")
 
