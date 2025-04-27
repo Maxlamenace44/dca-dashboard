@@ -68,12 +68,19 @@ def load_macro():
 def pct_change(s):
     return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
 
-def green_count(s):
-    cnt = 0
-    for w in timeframes.values():
-        if len(s) >= w and s.iloc[-1] < s.tail(w).mean():
-            cnt += 1
-    return cnt
+def compute_weight(diff, threshold):
+    """
+    Retourne le poids selon la déviation :
+    - diff < 0  : +1
+    - |diff| < threshold : +0.5
+    - sinon     : -1
+    """
+    if diff < 0:
+        return 1
+    elif abs(diff) < threshold:
+        return 0.5
+    else:
+        return -1
 
 # --- SIDEBAR ---
 st.sidebar.header("Paramètres de rééquilibrage")
@@ -81,56 +88,52 @@ if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
 
 # Seuil de déviation et arbitrage
-threshold = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
+threshold_pct = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
+threshold = threshold_pct / 100
 arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
+
+# Chargement des prix pour le calcul global
+df_prices = load_prices()
+
+# Calcul des scores (surpondération) pour chaque ETF
+scores = {}
+for name, series in df_prices.items():
+    s = series.dropna()
+    score = 0
+    for w in timeframes.values():
+        if len(s) >= w:
+            avg = s.tail(w).mean()
+            diff = (s.iloc[-1] - avg) / avg
+            score += compute_weight(diff, threshold)
+    scores[name] = score
+
+# Allocation dynamique
+st.sidebar.header("Allocation dynamique (%)")
+total_abs = sum(abs(v) for v in scores.values()) or 1
+for name, score in scores.items():
+    alloc = score / total_abs * 50
+    arrow = '↑' if score > 0 else '↗' if score == 0.5 else '↓'
+    st.sidebar.markdown(
+        f"**{name}:** {alloc:.1f}% <span style='color:blue'>{arrow} ({score:+.1f})</span>",
+        unsafe_allow_html=True
+    )
 
 # VIX 3 mois
 try:
     vix = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
     fig_vix = px.line(vix, height=100)
-    fig_vix.update_layout(margin=dict(l=0,r=0,t=0,b=0), showlegend=False)
+    fig_vix.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
     st.sidebar.subheader("VIX (3 mois)")
     st.sidebar.plotly_chart(fig_vix, use_container_width=True)
     st.sidebar.metric("VIX actuel", f"{vix.iloc[-1]:.2f}", delta=f"{vix.iloc[-1]-vix.iloc[-2]:+.2f}")
 except:
     st.sidebar.write("VIX non disponible")
 
-# Allocation dynamique
-st.sidebar.header("Allocation dynamique (%)")
-prices_temp = load_prices()
-scores = {}
-for name in etfs:
-    s = prices_temp[name].dropna()
-    score = 0
-    for w in timeframes.values():
-        if len(s) >= w:
-            avg = s.tail(w).mean()
-            diff = (s.iloc[-1] - avg) / avg
-            # Poids selon nouveau principe
-            if diff < 0:
-                weight = 1
-            elif 0 <= abs(diff) < threshold/100:
-                weight = 0.5
-            else:
-                weight = -1
-        else:
-            weight = 0
-        score += weight
-    scores[name] = score
-
-total_score = sum(abs(v) for v in scores.values()) or 1
-for name in etfs:
-    alloc = scores[name] / total_score * 50
-    st.sidebar.markdown(
-        f"**{name}:** {alloc:.1f}% <span style='color:blue'>({scores[name]:.1f})</span>",
-        unsafe_allow_html=True
-    )
-
 # --- CHARGEMENT PRINCIPAL ---
-prices = load_prices()
+prices = df_prices
 macro_df = load_macro()
 deltas = {n: pct_change(prices[n].dropna()) for n in etfs}
-green_counts = {n: green_count(prices[n].dropna()) for n in etfs}
+green_counts = {n: sum(1 for w in timeframes.values() if len(prices[n].dropna())>=w and prices[n].dropna().iloc[-1] < prices[n].dropna().tail(w).mean()) for n in etfs}
 
 # --- AFFICHAGE PRINCIPAL ---
 st.title("Dashboard DCA ETF")
@@ -189,7 +192,7 @@ for idx, name in enumerate(etfs):
         st.plotly_chart(fig, use_container_width=True)
 
         # Badges tri-couleurs et surpondération
-        surp_score = 0
+        surp_score = scores[name]
         badge_cols = st.columns(len(timeframes))
         for j, (lbl, w) in enumerate(timeframes.items()):
             avg = series.tail(w).mean() if len(series) >= w else None
@@ -198,20 +201,20 @@ for idx, name in enumerate(etfs):
                 tooltip = "Pas assez de données"
             else:
                 diff = (last - avg) / avg
-                if diff < 0:
-                    bg, arrow, weight = "green", "↑", 1
-                elif 0 <= abs(diff) < threshold/100:
-                    bg, arrow, weight = "orange", "↗", 0.5
+                weight = compute_weight(diff, threshold)
+                if weight == 1:
+                    bg, arrow = "green", "↑"
+                elif weight == 0.5:
+                    bg, arrow = "orange", "↗"
                 else:
-                    bg, arrow, weight = "crimson", "↓", -1
+                    bg, arrow = "crimson", "↓"
                 tooltip = f"Moyenne {lbl}: {avg:.2f}"
-            surp_score += weight
             if badge_cols[j].button(lbl, key=f"{name}_{lbl}"):
                 st.session_state[key] = lbl
             badge_cols[j].markdown(
                 f"<span title='{tooltip}' "
                 f"style='background:{bg};color:white;padding:4px 8px;border-radius:4px;font-size:12px;'>"
-                f"{lbl} {arrow}</span>",
+                f"{lbl} {arrow} ({weight:+.1f})</span>",
                 unsafe_allow_html=True
             )
 
