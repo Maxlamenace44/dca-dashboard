@@ -224,5 +224,5 @@ for idx, (name, series) in enumerate(prices.items()):
         st.markdown("</div>", unsafe_allow_html=True)
 
 # Clé FRED
-i f macro_df.empty:
+if macro_df.empty:
     st.warning("🔑 Clé FRED_API_KEY manquante.")
