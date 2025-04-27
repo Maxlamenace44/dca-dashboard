@@ -68,72 +68,68 @@ def load_macro():
 def pct_change(s):
     return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
 
-def compute_weight(diff, threshold):
+def score_and_style(diff, threshold):
     """
-    Retourne le poids selon la déviation :
-    - diff < 0  : +1
-    - |diff| < threshold : +0.5
-    - sinon     : -1
+    Renvoie (poids, flèche, couleur) selon la déviation.
+    Vert (diff<0): +1, ↑, green
+    Orange (|diff|<threshold): +0.5, ↗, orange
+    Rouge: -1, ↓, crimson
     """
     if diff < 0:
-        return 1
-    elif abs(diff) < threshold:
-        return 0.5
+        return 1, '↑', 'green'
+    elif abs(diff) < threshold/100:
+        return 0.5, '↗', 'orange'
     else:
-        return -1
+        return -1, '↓', 'crimson'
 
 # --- SIDEBAR ---
 st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
 
-# Seuil de déviation et arbitrage
-threshold_pct = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
-threshold = threshold_pct / 100
+# Slider et arbitrage
+threshold = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
 arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
-
-# Chargement des prix pour le calcul global
-df_prices = load_prices()
-
-# Calcul des scores (surpondération) pour chaque ETF
-scores = {}
-for name, series in df_prices.items():
-    s = series.dropna()
-    score = 0
-    for w in timeframes.values():
-        if len(s) >= w:
-            avg = s.tail(w).mean()
-            diff = (s.iloc[-1] - avg) / avg
-            score += compute_weight(diff, threshold)
-    scores[name] = score
-
-# Allocation dynamique
-st.sidebar.header("Allocation dynamique (%)")
-total_abs = sum(abs(v) for v in scores.values()) or 1
-for name, score in scores.items():
-    alloc = score / total_abs * 50
-    arrow = '↑' if score > 0 else '↗' if score == 0.5 else '↓'
-    st.sidebar.markdown(
-        f"**{name}:** {alloc:.1f}% <span style='color:blue'>{arrow} ({score:+.1f})</span>",
-        unsafe_allow_html=True
-    )
 
 # VIX 3 mois
 try:
     vix = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
     fig_vix = px.line(vix, height=100)
-    fig_vix.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
+    fig_vix.update_layout(margin=dict(l=0,r=0,t=0,b=0), showlegend=False)
     st.sidebar.subheader("VIX (3 mois)")
     st.sidebar.plotly_chart(fig_vix, use_container_width=True)
     st.sidebar.metric("VIX actuel", f"{vix.iloc[-1]:.2f}", delta=f"{vix.iloc[-1]-vix.iloc[-2]:+.2f}")
 except:
     st.sidebar.write("VIX non disponible")
 
+# Allocation dynamique (calcul unique)
+st.sidebar.header("Allocation dynamique (%)")
+prices_temp = load_prices()
+surp_scores = {}
+for name in etfs:
+    scores = []
+    s = prices_temp[name].dropna()
+    if len(s):
+        for w in timeframes.values():
+            if len(s) >= w:
+                diff = (s.iloc[-1] - s.tail(w).mean()) / s.tail(w).mean()
+                weight, _, _ = score_and_style(diff, threshold)
+                scores.append(weight)
+    surp_scores[name] = sum(scores)
+
+# Normalisation et affichage
+total = sum(abs(v) for v in surp_scores.values()) or 1
+for name, score in surp_scores.items():
+    alloc = score / total * 50
+    st.sidebar.markdown(
+        f"**{name}:** {alloc:.1f}% <span style='color:blue'>({score:.1f})</span>",
+        unsafe_allow_html=True
+    )
+
 # --- CHARGEMENT PRINCIPAL ---
-prices = df_prices
+prices = load_prices()
 macro_df = load_macro()
 deltas = {n: pct_change(prices[n].dropna()) for n in etfs}
-green_counts = {n: sum(1 for w in timeframes.values() if len(prices[n].dropna())>=w and prices[n].dropna().iloc[-1] < prices[n].dropna().tail(w).mean()) for n in etfs}
 
 # --- AFFICHAGE PRINCIPAL ---
 st.title("Dashboard DCA ETF")
@@ -147,25 +143,21 @@ for idx, name in enumerate(etfs):
     last = series.iloc[-1]
     delta = deltas[name]
     perf_color = "green" if delta >= 0 else "crimson"
-    border = "#28a745" if green_counts[name] >= 4 else "#ffc107" if green_counts[name] >= 2 else "#dc3545"
+    border = "#28a745" if surp_scores[name] > 0 else "#dc3545"
 
-    # Choix de la période via session_state
+    # Période via session_state
     key = f"win_{name}"
     if key not in st.session_state:
         st.session_state[key] = "Annuel"
     period_days = timeframes[st.session_state[key]]
     df_plot = series.tail(period_days)
 
-    # Création du graphique
+    # Graphique
     fig = px.line(df_plot, height=300)
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        showlegend=False,
-        xaxis_title="Date",
-        yaxis_title="Valeur"
-    )
+    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
+                      xaxis_title="Date", yaxis_title="Valeur")
 
-    # Préparation des indicateurs macro en 2 colonnes
+    # Indicateurs macro
     macro_items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -181,57 +173,39 @@ for idx, name in enumerate(etfs):
         "</div>"
     )
 
-    # Affichage de la carte
     with cols[idx % 2]:
-        st.markdown(f"<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;'>",
-                    unsafe_allow_html=True)
+        st.markdown(f"<div style='border:2px solid {border};border-radius:6px; padding:12px;margin:6px;'>", unsafe_allow_html=True)
         st.markdown(
             f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>",
             unsafe_allow_html=True
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Badges tri-couleurs et surpondération
-        surp_score = scores[name]
+        # Badges tri-couleurs
         badge_cols = st.columns(len(timeframes))
         for j, (lbl, w) in enumerate(timeframes.items()):
-            avg = series.tail(w).mean() if len(series) >= w else None
-            if avg is None:
-                bg, arrow, weight = "crimson", "↓", -1
-                tooltip = "Pas assez de données"
+            arrow = ''
+            if len(series) >= w:
+                diff = (last - series.tail(w).mean()) / series.tail(w).mean()
+                _, arrow, bg = score_and_style(diff, threshold)
             else:
-                diff = (last - avg) / avg
-                weight = compute_weight(diff, threshold)
-                if weight == 1:
-                    bg, arrow = "green", "↑"
-                elif weight == 0.5:
-                    bg, arrow = "orange", "↗"
-                else:
-                    bg, arrow = "crimson", "↓"
-                tooltip = f"Moyenne {lbl}: {avg:.2f}"
+                arrow, bg = '↓', 'crimson'
             if badge_cols[j].button(lbl, key=f"{name}_{lbl}"):
                 st.session_state[key] = lbl
             badge_cols[j].markdown(
-                f"<span title='{tooltip}' "
+                f"<span title='Moyenne {lbl}: {series.tail(w).mean():.2f if len(series)>=w else 'N/A'}' "
                 f"style='background:{bg};color:white;padding:4px 8px;border-radius:4px;font-size:12px;'>"
-                f"{lbl} {arrow} ({weight:+.1f})</span>",
-                unsafe_allow_html=True
-            )
+                f"{lbl} {arrow}</span>", unsafe_allow_html=True)
 
-        # Affichage surpondération et macro
-        surp_html = f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {surp_score}</div>"
-        st.markdown(surp_html, unsafe_allow_html=True)
+        # Surpondération et macro
+        st.markdown(f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {surp_scores[name]:.1f}</div>", unsafe_allow_html=True)
         st.markdown(macro_html, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         # Alertes d'arbitrage
         if idx % 2 == 1 and arb:
             for thr in arb:
-                pairs = [
-                    (a, b, abs(deltas[a] - deltas[b]))
-                    for a in deltas for b in deltas
-                    if a < b and abs(deltas[a] - deltas[b]) > thr
-                ]
+                pairs = [(a, b, abs(deltas[a] - deltas[b])) for a in deltas for b in deltas if a < b and abs(deltas[a] - deltas[b]) > thr]
                 if pairs:
                     st.warning(f"Écart > {thr}% : {pairs}")
 
