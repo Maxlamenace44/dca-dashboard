@@ -3,11 +3,11 @@
 Point d'entrée Streamlit pour le Dashboard DCA ETF.
 """
 import streamlit as st
-from .constants import ETFS, TIMEFRAMES, MACRO_SERIES
-from .data_loader import load_prices, load_macro
-from .scoring import pct_change, score_and_style
-from .plotting import make_timeseries_fig
-from .streamlit_utils import inject_css, begin_card, end_card
+from constants import ETFS, TIMEFRAMES, MACRO_SERIES
+from data_loader import load_prices, load_macro
+from scoring import pct_change, score_and_style
+from plotting import make_timeseries_fig
+from streamlit_utils import inject_css, begin_card, end_card
 
 # --- CONFIG PAGE ---
 st.set_page_config(page_title="Dashboard DCA ETF",
