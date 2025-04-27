@@ -71,8 +71,8 @@ for idx, (name, series) in enumerate(prices.items()):
     fig = make_timeseries_fig(data, period)
     alloc = allocations.get(name, 0.0)
 
-    with cols[idx % 2] as container:
-        begin_card(container)
+    with cols[idx % 2]:
+        begin_card()
 
         # Titre + variation %
         container.markdown(
@@ -117,4 +117,4 @@ for idx, (name, series) in enumerate(prices.items()):
             unsafe_allow_html=True
         )
 
-        end_card(container)
+        end_card()
