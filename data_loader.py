@@ -7,7 +7,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from fredapi import Fred
 import streamlit as st
-from .constants import ETFS, MACRO_SERIES
+from constants import ETFS, MACRO_SERIES
 
 @st.cache_data
 def load_prices() -> pd.DataFrame:
