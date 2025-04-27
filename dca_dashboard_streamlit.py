@@ -1,9 +1,16 @@
+# -*- coding: utf-8 -*-
+"""
+Dashboard DCA ETF révisé avec calcul optimisé de la surpondération.
+Basé sur votre script original citeturn0file0.
+"""
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 from fredapi import Fred
+from typing import Tuple
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Dashboard DCA ETF", layout="wide", initial_sidebar_state="expanded")
@@ -64,38 +71,35 @@ def load_macro():
     return df
 
 # --- FONCTIONS UTILES ---
-def pct_change(s):
+def pct_change(s: pd.Series) -> float:
     return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
 
-def score_and_style(diff, threshold):
+def score_and_style(diff: float, threshold_pct: float) -> Tuple[float, str, str]:
     """
-    Quatre niveaux selon la déviation et dernier mapping :
-    - Vert (+1 pt) : diff ≤ -threshold
-    - Jaune (+0,5 pt) : -threshold < diff ≤ 0
-    - Orange (-0,5 pt) : 0 < diff < threshold
-    - Rouge (-1 pt) : diff ≥ threshold
+    Quatre niveaux selon la déviation en % (threshold_pct) :
+      - Vert    : diff ≤ -threshold_pct ⇒ +1 pt
+      - Jaune   : -threshold_pct < diff ≤ 0 ⇒ +0.5 pt
+      - Orange  : 0 < diff < threshold_pct  ⇒ -0.5 pt
+      - Rouge   : diff ≥ threshold_pct      ⇒ -1 pt
     """
-    t = threshold / 100
+    t = threshold_pct / 100.0
     if diff <= -t:
-        # Vert
-        return 1, '↑', 'green'
+        return 1.0,  '↑', 'green'
     elif diff <= 0:
-        # Jaune
         return 0.5, '↗', '#c8e6c9'
     elif diff < t:
-        # Orange
-        return -0.5, '↘', 'orange'
+        return -0.5,'↘','orange'
     else:
-        # Rouge
-        return -1, '↓', 'crimson'
+        return -1.0,'↓','crimson'
 
 # --- SIDEBAR ---
 st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
 
-threshold = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
+threshold_pct = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
 arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
+debug_surp = st.sidebar.checkbox("Afficher débogage surpondération")
 
 # VIX 3 mois
 try:
@@ -108,19 +112,16 @@ try:
 except:
     st.sidebar.write("VIX non disponible")
 
-# --- ALLOCATION DYNAMIQUE ---
-st.sidebar.header("Allocation dynamique (%)")
+# --- ALLOCATION DYNAMIQUE (SIDEBAR) ---
 prices = load_prices()
 surp_scores = {}
 for name, series in prices.items():
     s = series.dropna()
-    score = 0
-    for w in timeframes.values():
-        if len(s) >= w:
-            diff = (s.iloc[-1] - s.tail(w).mean()) / s.tail(w).mean()
-            weight, _, _ = score_and_style(diff, threshold)
-            score += weight
-    surp_scores[name] = score
+    # Moyennes pré-calculées
+    means = {w: s.tail(w).mean() for w in timeframes.values() if len(s) >= w}
+    # Poids
+    weights = [score_and_style((s.iloc[-1] - m) / m, threshold_pct)[0] for m in means.values()]
+    surp_scores[name] = sum(weights)
 
 # Normalisation sur somme des valeurs absolues
 denom = sum(abs(v) for v in surp_scores.values()) or 1
@@ -147,15 +148,20 @@ for idx, (name, series) in enumerate(prices.items()):
     delta = deltas[name]
     perf_color = 'green' if delta >= 0 else 'crimson'
 
-    # Calcul local de la surpondération
-    surp_score = 0
-    for w in timeframes.values():
-        if len(data) >= w:
-            diff = (last - data.tail(w).mean()) / data.tail(w).mean()
-            weight, _, _ = score_and_style(diff, threshold)
-            surp_score += weight
+    # Calcul de la surpondération optimisé
+    means = {w: data.tail(w).mean() for w in timeframes.values() if len(data) >= w}
+    weights = []
+    for w, mean in means.items():
+        diff = (last - mean) / mean
+        weight, arrow, color = score_and_style(diff, threshold_pct)
+        weights.append(weight)
+    surp_score = sum(weights)
 
-    # Bordure selon surp_score
+    # Affichage debug si demandé
+    if debug_surp:
+        st.write(f"[{name}] Fenêtres et poids:", list(means.keys()), "→", weights, "→ Somme:", surp_score)
+
+    # Bordure selon surpondération
     border = '#28a745' if surp_score > 0 else '#dc3545'
 
     # Période via session_state
@@ -170,7 +176,7 @@ for idx, (name, series) in enumerate(prices.items()):
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
                       xaxis_title='Date', yaxis_title='Valeur')
 
-    # Macro indicateurs
+    # Indicateurs macro
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -204,7 +210,7 @@ for idx, (name, series) in enumerate(prices.items()):
             if len(data) >= w:
                 avg = data.tail(w).mean()
                 diff = (last - avg) / avg
-                _, arrow, bg = score_and_style(diff, threshold)
+                _, arrow, bg = score_and_style(diff, threshold_pct)
                 tooltip = f"Moyenne {lbl}: {avg:.2f}"
             else:
                 arrow, bg = '↓', 'crimson'
