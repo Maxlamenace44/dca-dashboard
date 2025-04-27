@@ -2,7 +2,7 @@
 """
 Dashboard DCA ETF avec allocation DCA pour 50% d'actions,
 utilisant un shift automatique pour sous-pondérer les scores négatifs,
-et affichant pour chaque indice sa carte complète (graphique, badges, allocation).
+et affichant pour chaque indice sa carte complète (graphique, badges, allocation et points).
 """
 
 import streamlit as st
@@ -44,7 +44,6 @@ macro_series = {
 # --- FONCTIONS UTILES ---
 def pct_change(s: pd.Series) -> float:
     return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
-
 
 def score_and_style(diff: float, threshold_pct: float) -> Tuple[float, str, str]:
     t = threshold_pct / 100.0
@@ -106,13 +105,10 @@ for name, series in prices.items():
         raw_scores[name] = 0.0
         continue
     last = s.iloc[-1]
-    score = 0.0
-    for w in timeframes.values():
-        if len(s) >= w:
-            m = s.tail(w).mean()
-            diff = (last - m) / m
-            weight, _, _ = score_and_style(diff, threshold_pct)
-            score += weight
+    score = sum(
+        score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
+        for w in timeframes.values() if len(s) >= w
+    )
     raw_scores[name] = score
 
 # --- SHIFT & ALLOCATION DCA ---
@@ -145,28 +141,24 @@ for idx, (name, series) in enumerate(prices.items()):
     delta = deltas.get(name, 0.0)
     perf_color = 'green' if delta >= 0 else 'crimson'
 
-    # Debug détaillé
-    if debug:
-        st.write(f"--- DEBUG {name} ---")
-        st.write(f"Formule : shift = {shift:.2f}, adj_score = raw_score + shift")
-        for lbl, w in timeframes.items():
-            if len(data) >= w:
-                m = data.tail(w).mean()
-                diff = (last - m) / m
-                wt, arrow, col = score_and_style(diff, threshold_pct)
-                st.write(f"{lbl}: last={last:.2f}, mean={m:.2f}, diff={diff:.4f}, score={wt:+.1f}")
-            else:
-                st.write(f"{lbl}: N/A")
+    # Calcul des poids par timeframe
+    weights = {}
+    for lbl, w in timeframes.items():
+        if len(data) >= w:
+            m = data.tail(w).mean()
+            diff = (last - m) / m
+            wt, _, _ = score_and_style(diff, threshold_pct)
+            weights[lbl] = wt
+        else:
+            weights[lbl] = None
 
     # Carte ETF
     with cols[idx % 2]:
         st.markdown(
-            f"<div style='border:2px solid #1f77b4; border-radius:6px; padding:12px; margin:6px;'>",
-            unsafe_allow_html=True
+            f"<div style='border:2px solid #1f77b4; border-radius:6px; padding:12px; margin:6px;'>", unsafe_allow_html=True
         )
         st.markdown(
-            f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>",
-            unsafe_allow_html=True
+            f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True
         )
         # Graphique
         key = f"win_{name}"
@@ -179,7 +171,7 @@ for idx, (name, series) in enumerate(prices.items()):
         st.plotly_chart(fig, use_container_width=True)
 
         # Badges
-        cols_badge = st.columns(len(timeframes))
+        badge_cols = st.columns(len(timeframes))
         for i, (lbl, w) in enumerate(timeframes.items()):
             if len(data) >= w:
                 m = data.tail(w).mean()
@@ -188,20 +180,22 @@ for idx, (name, series) in enumerate(prices.items()):
                 tooltip = f"Moyenne {lbl}: {m:.2f}"
             else:
                 arrow, bg, tooltip = '↓','crimson','N/A'
-            with cols_badge[i]:
+            with badge_cols[i]:
                 if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
                     st.session_state[key] = lbl
                 st.markdown(
-                    f"<span title='{tooltip}' style='background:{bg};color:white;"
-                    f"padding:4px;border-radius:4px;font-size:12px;'>{lbl} {arrow}</span>",
-                    unsafe_allow_html=True
+                    f"<span title='{tooltip}' style='background:{bg};color:white;padding:4px;border-radius:4px;font-size:12px;'>{lbl} {arrow}</span>", unsafe_allow_html=True
                 )
 
+        # Points de pondération
+        pts = ", ".join(
+            f"{lbl}:{weights[lbl]:+0.1f}" for lbl in timeframes if weights[lbl] is not None
+        )
+        st.markdown(f"<div style='font-size:12px;'>Points: {pts}</div>", unsafe_allow_html=True)
         # Allocation DCA
         alloc = allocations.get(name, 0)
         st.markdown(
-            f"<div style='text-align:right;color:#ff7f0e;'>"
-            f"Allocation DCA: {alloc:.1f}%</div>", unsafe_allow_html=True
+            f"<div style='text-align:right;color:#ff7f0e;'>Allocation DCA: {alloc:.1f}%</div>", unsafe_allow_html=True
         )
 
         # Macro indicateurs
@@ -214,13 +208,9 @@ for idx, (name, series) in enumerate(prices.items()):
                 items.append(f"<li>{lbl}: N/A</li>")
         half = len(items)//2 + len(items)%2
         st.markdown(
-            "<div style='display:flex;gap:20px;'>" +
-            f"<ul style='margin:0;padding-left:16px'>{''.join(items[:half])}</ul>" +
-            f"<ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul>" +
-            "</div>",
-            unsafe_allow_html=True
+            "<div style='display:flex;gap:20px;'><ul style='margin:0;padding-left:16px'>"
+            f"{''.join(items[:half])}</ul><ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul></div>", unsafe_allow_html=True
         )
-
         st.markdown("</div>", unsafe_allow_html=True)
 
 # Clé FRED
