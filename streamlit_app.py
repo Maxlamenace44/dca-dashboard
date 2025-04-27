@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Point d'entrée Streamlit pour le Dashboard DCA ETF.
-Chaque “carte” est réellement encadrée par un <div> HTML inline,
-conservant toute l'interactivité Streamlit (boutons, graphiques, session_state).
+Chaque “carte” est entièrement encapsulée dans un <div> inline
+avec border 3px, radius 6px, et couleur dynamique selon l’allocation.
 """
 
 import streamlit as st
@@ -10,6 +10,7 @@ from constants       import ETFS, TIMEFRAMES, MACRO_SERIES
 from data_loader     import load_prices, load_macro
 from scoring         import pct_change, score_and_style
 from plotting        import make_timeseries_fig
+from streamlit_utils import inject_css, begin_card, end_card
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(
@@ -17,6 +18,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+inject_css()
 
 # --- SIDEBAR PARAMS ---
 st.sidebar.header("Paramètres de stratégie DCA")
@@ -40,7 +42,10 @@ for name, series in prices.items():
     else:
         last = s.iloc[-1]
         raw_scores[name] = sum(
-            score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
+            score_and_style(
+                (last - s.tail(w).mean()) / s.tail(w).mean(),
+                threshold_pct
+            )[0]
             for w in TIMEFRAMES.values() if len(s) >= w
         )
 
@@ -56,7 +61,8 @@ for name, pct in allocations.items():
     st.sidebar.markdown(f"**{name}:** {pct:.1f}%")
     if debug:
         st.sidebar.write(
-            f"raw={raw_scores[name]:+.2f}, shift={shift:.2f}, adj={adj_scores[name]:+.2f}"
+            f"raw={raw_scores[name]:+.2f}, "
+            f"shift={shift:.2f}, adj={adj_scores[name]:+.2f}"
         )
 
 # --- AFFICHAGE PRINCIPAL ---
@@ -79,7 +85,7 @@ for idx, (name, series) in enumerate(prices.items()):
     if data.empty:
         continue
 
-    # Calculs de perf et figure
+    # Performances et figure
     last       = data.iloc[-1]
     delta      = deltas.get(name, 0.0)
     perf_color = "green" if delta >= 0 else "crimson"
@@ -92,16 +98,9 @@ for idx, (name, series) in enumerate(prices.items()):
     alloc        = allocations[name]
     border_color = get_border_color(alloc)
 
-    # --- Ouverture du div “carte” avec style inline ---
+    # --- Encapsulation en DIV inline ---
     with cols[idx % 2]:
-        st.markdown(
-            f"<div style='"
-            f"border:3px solid {border_color};"
-            f"border-radius:6px;"
-            f"padding:12px;"
-            f"margin:6px 0;'>",
-            unsafe_allow_html=True
-        )
+        begin_card(border_color)
 
         # Titre + variation %
         st.markdown(
@@ -110,10 +109,10 @@ for idx, (name, series) in enumerate(prices.items()):
             unsafe_allow_html=True
         )
 
-        # Graphique Plotly
+        # Graphique
         st.plotly_chart(fig, use_container_width=True)
 
-        # Badges interactifs par timeframe
+        # Badges interactifs
         badge_cols = st.columns(len(TIMEFRAMES))
         for i, (lbl, w) in enumerate(TIMEFRAMES.items()):
             with badge_cols[i]:
@@ -128,8 +127,7 @@ for idx, (name, series) in enumerate(prices.items()):
                     st.session_state[win_key] = lbl
 
                 st.markdown(
-                    f"<span title='Moyenne {lbl}: "
-                    f"{m if 'm' in locals() else 'N/A':.2f}' "
+                    f"<span title='Moyenne {lbl}: {m if 'm' in locals() else 'N/A':.2f}' "
                     f"style='background:{bg};color:white;"
                     f"padding:4px;border-radius:4px;font-size:12px;'>"
                     f"{lbl} {arrow}</span>",
@@ -153,11 +151,10 @@ for idx, (name, series) in enumerate(prices.items()):
                 items.append(f"<li>{lbl}: N/A</li>")
 
         st.markdown(
-            "<ul style='columns:2;margin-top:8px;padding-left:16px;'>"
-            + "".join(items) +
+            "<ul style='columns:2;margin-top:8px;'>" +
+            "".join(items) +
             "</ul>",
             unsafe_allow_html=True
         )
 
-        # --- Fermeture du div “carte” ---
-        st.markdown("</div>", unsafe_allow_html=True)
+        end_card()
