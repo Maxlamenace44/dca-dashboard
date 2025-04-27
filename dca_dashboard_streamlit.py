@@ -164,11 +164,14 @@ for idx, name in enumerate(etfs):
         )
     badges_html = ''.join(badges)
 
-    # Indicateurs macro en 2 colonnes
+        # Indicateurs macro en 2 colonnes
     items = []
     for lbl in macro_series:
-        val = (macro_df[lbl].dropna().iloc[-1] if lbl in macro_df and not macro_df[lbl].dropna().empty else None)
-        items.append(f"<li>{lbl}: {val:.2f if val else 'N/A'}</li>")
+        if lbl in macro_df and not macro_df[lbl].dropna().empty:
+            val = macro_df[lbl].dropna().iloc[-1]
+            items.append(f"<li>{lbl}: {val:.2f}</li>")
+        else:
+            items.append(f"<li>{lbl}: N/A</li>")
     half = len(items)//2 + len(items)%2
     left_html = ''.join(items[:half])
     right_html = ''.join(items[half:])
