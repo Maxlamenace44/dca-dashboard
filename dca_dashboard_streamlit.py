@@ -42,8 +42,7 @@ def load_prices():
     for name, ticker in etfs.items():
         try:
             data = yf.download(ticker, start=start, end=end, progress=False)
-            series = data['Adj Close'] if 'Adj Close' in data.columns else data['Close']
-            df[name] = series
+            df[name] = data['Adj Close'] if 'Adj Close' in data.columns else data['Close']
         except:
             df[name] = pd.Series(dtype=float)
     return df
@@ -66,7 +65,7 @@ def load_macro():
 
 # --- FONCTIONS UTILES ---
 def pct_change(s):
-    return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
+    return (s.iloc[-1] / s.iloc[-2] - 1) * 100 if len(s) > 1 else 0.0
 
 def score_and_style(diff, threshold):
     """
@@ -77,17 +76,15 @@ def score_and_style(diff, threshold):
     """
     if diff < 0:
         return 1, '↑', 'green'
-    elif abs(diff) < threshold/100:
+    if abs(diff) < threshold/100:
         return 0.5, '↗', 'orange'
-    else:
-        return -1, '↓', 'crimson'
+    return -1, '↓', 'crimson'
 
 # --- SIDEBAR ---
 st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
 
-# Slider et arbitrage
 threshold = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
 arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
 
@@ -95,27 +92,26 @@ arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
 try:
     vix = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
     fig_vix = px.line(vix, height=100)
-    fig_vix.update_layout(margin=dict(l=0,r=0,t=0,b=0), showlegend=False)
+    fig_vix.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
     st.sidebar.subheader("VIX (3 mois)")
     st.sidebar.plotly_chart(fig_vix, use_container_width=True)
-    st.sidebar.metric("VIX actuel", f"{vix.iloc[-1]:.2f}", delta=f"{vix.iloc[-1]-vix.iloc[-2]:+.2f}")
+    st.sidebar.metric("VIX actuel", f"{vix.iloc[-1]:.2f}", delta=f"{vix.iloc[-1] - vix.iloc[-2]:+.2f}")
 except:
     st.sidebar.write("VIX non disponible")
 
-# Allocation dynamique (calcul unique)
+# --- ALLOCATION DYNAMIQUE (calcul unique) ---
 st.sidebar.header("Allocation dynamique (%)")
 prices_temp = load_prices()
 surp_scores = {}
-for name in etfs:
-    scores = []
-    s = prices_temp[name].dropna()
-    if len(s):
-        for w in timeframes.values():
-            if len(s) >= w:
-                diff = (s.iloc[-1] - s.tail(w).mean()) / s.tail(w).mean()
-                weight, _, _ = score_and_style(diff, threshold)
-                scores.append(weight)
-    surp_scores[name] = sum(scores)
+for name, s in prices_temp.items():
+    series = s.dropna()
+    score = 0
+    for w in timeframes.values():
+        if len(series) >= w:
+            diff = (series.iloc[-1] - series.tail(w).mean()) / series.tail(w).mean()
+            weight, _, _ = score_and_style(diff, threshold)
+            score += weight
+    surp_scores[name] = score
 
 # Normalisation et affichage
 total = sum(abs(v) for v in surp_scores.values()) or 1
@@ -127,73 +123,69 @@ for name, score in surp_scores.items():
     )
 
 # --- CHARGEMENT PRINCIPAL ---
-prices = load_prices()
+prices = prices_temp  # déjà chargé
 macro_df = load_macro()
-deltas = {n: pct_change(prices[n].dropna()) for n in etfs}
+deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
 
 # --- AFFICHAGE PRINCIPAL ---
 st.title("Dashboard DCA ETF")
 cols = st.columns(2)
 
-for idx, name in enumerate(etfs):
-    series = prices[name].dropna()
-    if series.empty:
+for idx, (name, series) in enumerate(prices.items()):
+    data = series.dropna()
+    if data.empty:
         continue
-
-    last = series.iloc[-1]
+    last = data.iloc[-1]
     delta = deltas[name]
-    perf_color = "green" if delta >= 0 else "crimson"
-    border = "#28a745" if surp_scores[name] > 0 else "#dc3545"
+    perf_color = 'green' if delta >= 0 else 'crimson'
+    border = '#28a745' if surp_scores[name] > 0 else '#dc3545'
 
     # Période via session_state
     key = f"win_{name}"
     if key not in st.session_state:
-        st.session_state[key] = "Annuel"
+        st.session_state[key] = 'Annuel'
     period_days = timeframes[st.session_state[key]]
-    df_plot = series.tail(period_days)
+    df_plot = data.tail(period_days)
 
     # Graphique
     fig = px.line(df_plot, height=300)
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
-                      xaxis_title="Date", yaxis_title="Valeur")
+                      xaxis_title='Date', yaxis_title='Valeur')
 
     # Indicateurs macro
-    macro_items = []
+    items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
             val = macro_df[lbl].dropna().iloc[-1]
-            macro_items.append(f"<li>{lbl}: {val:.2f}</li>")
+            items.append(f"<li>{lbl}: {val:.2f}</li>")
         else:
-            macro_items.append(f"<li>{lbl}: N/A</li>")
-    half = len(macro_items)//2 + len(macro_items)%2
+            items.append(f"<li>{lbl}: N/A</li>")
+    half = len(items)//2 + len(items)%2
     macro_html = (
         "<div style='display:flex;gap:40px;font-size:12px;'>"
-        f"<ul style='margin:0;padding-left:16px'>{''.join(macro_items[:half])}</ul>"
-        f"<ul style='margin:0;padding-left:16px'>{''.join(macro_items[half:])}</ul>"
+        f"<ul style='margin:0;padding-left:16px'>{''.join(items[:half])}</ul>"
+        f"<ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul>"
         "</div>"
     )
 
+    # Carte
     with cols[idx % 2]:
-        st.markdown(f"<div style='border:2px solid {border};border-radius:6px; padding:12px;margin:6px;'>", unsafe_allow_html=True)
-        st.markdown(
-            f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;'>", unsafe_allow_html=True)
+        st.markdown(f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
 
-        # Badges tri-couleurs
+        # Badges
         badge_cols = st.columns(len(timeframes))
         for j, (lbl, w) in enumerate(timeframes.items()):
-            arrow = ''
-            if len(series) >= w:
-                diff = (last - series.tail(w).mean()) / series.tail(w).mean()
+            if len(data) >= w:
+                diff = (last - data.tail(w).mean()) / data.tail(w).mean()
                 _, arrow, bg = score_and_style(diff, threshold)
             else:
                 arrow, bg = '↓', 'crimson'
             if badge_cols[j].button(lbl, key=f"{name}_{lbl}"):
                 st.session_state[key] = lbl
             badge_cols[j].markdown(
-                f"<span title='Moyenne {lbl}: {series.tail(w).mean():.2f if len(series)>=w else 'N/A'}' "
+                f"<span title='Moyenne {lbl}: {data.tail(w).mean():.2f if len(data)>=w else 'N/A'}' "
                 f"style='background:{bg};color:white;padding:4px 8px;border-radius:4px;font-size:12px;'>"
                 f"{lbl} {arrow}</span>", unsafe_allow_html=True)
 
@@ -209,6 +201,6 @@ for idx, name in enumerate(etfs):
                 if pairs:
                     st.warning(f"Écart > {thr}% : {pairs}")
 
-# Avertissement clé FRED
+# Clé FRED manquante
 if macro_df.empty:
     st.warning("🔑 Clé FRED_API_KEY manquante pour indicateurs macro.")
