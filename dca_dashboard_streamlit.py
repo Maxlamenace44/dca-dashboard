@@ -174,22 +174,28 @@ for idx, (name, series) in enumerate(prices.items()):
         st.markdown(f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
 
-        # Badges
+                # Badges tri-couleurs
         badge_cols = st.columns(len(timeframes))
         for j, (lbl, w) in enumerate(timeframes.items()):
+            # Calcul de la moyenne et du tooltip
             if len(data) >= w:
-                diff = (last - data.tail(w).mean()) / data.tail(w).mean()
+                avg = data.tail(w).mean()
+                diff = (last - avg) / avg
                 _, arrow, bg = score_and_style(diff, threshold)
+                tooltip = f"Moyenne {lbl}: {avg:.2f}"
             else:
                 arrow, bg = '↓', 'crimson'
+                tooltip = "Pas assez de données"
+            # Bouton pour changer la période
             if badge_cols[j].button(lbl, key=f"{name}_{lbl}"):
                 st.session_state[key] = lbl
+            # Affichage du badge
             badge_cols[j].markdown(
-                f"<span title='Moyenne {lbl}: {data.tail(w).mean():.2f if len(data)>=w else 'N/A'}' "
+                f"<span title='{tooltip}' "
                 f"style='background:{bg};color:white;padding:4px 8px;border-radius:4px;font-size:12px;'>"
                 f"{lbl} {arrow}</span>", unsafe_allow_html=True)
 
-        # Surpondération et macro
+        # Surpondération et macro et macro
         st.markdown(f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {surp_scores[name]:.1f}</div>", unsafe_allow_html=True)
         st.markdown(macro_html, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -204,3 +210,4 @@ for idx, (name, series) in enumerate(prices.items()):
 # Clé FRED manquante
 if macro_df.empty:
     st.warning("🔑 Clé FRED_API_KEY manquante pour indicateurs macro.")
+
