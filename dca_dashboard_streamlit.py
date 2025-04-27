@@ -149,14 +149,18 @@ for idx, name in enumerate(etfs):
     # Timeframe badges (DCA)
     badges = []
     for lbl, w in timeframes.items():
-        avg = series_full[-w:].mean() if len(series_full)>=w else None
-        color_bg = 'green' if avg is not None and last<avg else 'crimson'
-        title = f"Moyenne {lbl}: {avg:.2f}" if avg is not None else f"Pas assez de données pour {lbl}"
+        if len(series_full) >= w:
+            avg = series_full.iloc[-w:].mean()
+            color_bg = 'green' if last < avg else 'crimson'
+            title = f"Moyenne {lbl}: {avg:.2f}"
+        else:
+            color_bg = 'crimson'
+            title = f"Pas assez de données pour {lbl}"
         badges.append(
-            f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;"
-            "border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+            f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;"  
+            f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
         )
-    badges_html = ''.join(badges)
+    badges_html = ''.join(badges)(badges)
 
     # Macro in two columns
     items = []
