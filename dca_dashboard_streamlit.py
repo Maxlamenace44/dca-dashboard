@@ -117,43 +117,43 @@ cols = st.columns(2)
 for idx, name in enumerate(etfs):
     series_full = prices_full[name]
     last = series_full.iloc[-1]
-    price_str = f"{last:.2f} USD"
+    price_str = f"{last:.2f}"
     delta = deltas[name]
     perf_color = 'green' if delta>=0 else 'crimson'
     gc = green_counts[name]
     border = '#28a745' if gc>=4 else '#ffc107' if gc>=2 else '#dc3545'
 
-            # Sélection de la période via badges interactifs
-        # On affiche les badges <span> puis on superpose un bouton invisible pour chaque période
-        badge_cols = st.columns(len(timeframes))
-        for i, (lbl, w) in enumerate(timeframes.items()):
-            avg = series_full[-w:].mean() if len(series_full) >= w else None
-            bg_color = 'green' if avg is not None and last < avg else 'crimson'
-            # couleur jaune si variation absolue <5%
-            if avg is not None and abs(last - avg)/avg < 0.05:
+    # Sélection de la période via badges interactifs
+    badge_cols = st.columns(len(timeframes))
+    for i, (lbl, w) in enumerate(timeframes.items()):
+        avg = series_full[-w:].mean() if len(series_full) >= w else None
+        # détermination couleur
+        if avg is None:
+            bg_color = 'crimson'
+        else:
+            diff = (last - avg) / avg
+            if diff < 0:
+                bg_color = 'green'
+            elif abs(diff) < 0.05:
                 bg_color = 'orange'
-            title = f"Moyenne {lbl}: {avg:.2f}" if avg is not None else f"Pas assez de données pour {lbl}"
-            # badge statique
-            badge_cols[i].markdown(
-                f"<div style='background:{bg_color};color:white;padding:4px 8px;"
-                f"border-radius:4px;text-align:center;font-size:12px' title='{title}'>{lbl}</div>",
-                unsafe_allow_html=True
-            )
-            # bouton transparent
-            if badge_cols[i].button(" ", key=f"btn_{name}_{lbl}", help=f"Afficher {lbl}"):
-                st.session_state[f"window_{name}"] = lbl
+            else:
+                bg_color = 'crimson'
+        title = f"Moyenne {lbl}: {avg:.2f}" if avg is not None else f"Pas assez de données pour {lbl}"
+        badge_html = (
+            f"<div style='background:{bg_color};color:white;padding:4px 8px;"
+            f"border-radius:4px;text-align:center;font-size:12px' title='{title}'>{lbl}</div>"
+        )
+        badge_cols[i].markdown(badge_html, unsafe_allow_html=True)
+        # bouton transparent
+        if badge_cols[i].button("", key=f"btn_{name}_{lbl}", help=f"Afficher {lbl}"):
+            st.session_state[f"window_{name}"] = lbl
 
-        # Période sélectionnée
-        sel = st.session_state[f"window_{name}"]
-        window = timeframes[sel]
-        data_plot = series_full.tail(window)
-
-        # Graphique sparkline
+    # fenêtre choisie\    
     sel = st.session_state[f"window_{name}"]
     window = timeframes[sel]
     data_plot = series_full.tail(window)
 
-    # Graphique sparkline
+    # graphique
     fig = px.line(data_plot, height=200)
     fig.update_layout(
         margin=dict(l=0,r=0,t=0,b=0),
@@ -163,19 +163,19 @@ for idx, name in enumerate(etfs):
     )
     chart_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-    # Badges DCA (affichage statique)
+    # badges d'affichage statiques
     badges = []
     for lbl, w in timeframes.items():
-        avg = series_full[-w:].mean() if len(series_full)>=w else None
-        color_bg = 'green' if avg and last<avg else 'crimson'
+        avg = series_full[-w:].mean() if len(series_full) >= w else None
+        color_bg = 'green' if avg and last < avg else 'crimson'
         title = f"Moyenne {lbl}: {avg:.2f}" if avg else f"Pas assez de données pour {lbl}"
         badges.append(
             f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;"
-            "border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+            f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
         )
     badges_html = ''.join(badges)
 
-        # Indicateurs macro en 2 colonnes
+    # indicateurs macro deux colonnes
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -187,7 +187,7 @@ for idx, name in enumerate(etfs):
     left_html = ''.join(items[:half])
     right_html = ''.join(items[half:])
 
-    # Composition de la carte
+    # composition de la carte
     card_html = f"""
 <div style='border:3px solid {border};border-radius:12px;padding:12px;margin:6px;background:white;overflow:auto;'>
   <h4 style='margin:4px 0'>{name}: {price_str} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>
@@ -203,7 +203,7 @@ for idx, name in enumerate(etfs):
     with cols[idx % 2]:
         html(card_html, height=460)
 
-    # Alertes arbitrage
+    # alertes arbitrage
     if idx % 2 == 1 and thresholds:
         for t in sorted(thresholds, reverse=True):
             pairs = [(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
