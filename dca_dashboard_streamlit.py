@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Dashboard DCA ETF avec allocation DCA pour 50% d'actions,
-sous-pondération des scores négatifs au bénéfice des scores positifs.
+utilisant un shift automatique pour sous-pondérer les scores négatifs.
 """
 
 import streamlit as st
@@ -63,8 +63,6 @@ if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
 threshold_pct = st.sidebar.slider("Seuil déviation (%)", 1, 20, 10, 1)
 debug = st.sidebar.checkbox("Afficher debug")
-# Nouveau: sous-pondération des scores négatifs (0 = ignore, 1 = symétrique)
-beta = st.sidebar.slider("Facteur sous-pondération négatifs (β)", 0.0, 1.0, 0.5, 0.1)
 
 # --- CHARGEMENT DES DONNÉES ---
 @st.cache_data
@@ -105,38 +103,31 @@ raw_scores = {}
 for name, series in prices.items():
     s = series.dropna()
     last = s.iloc[-1] if len(s) else float('nan')
-    score = sum(score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
-                for w in timeframes.values() if len(s) >= w)
+    score = sum(
+        score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
+        for w in timeframes.values() if len(s) >= w
+    )
     raw_scores[name] = score
 
-# --- SOUS-PONDÉRATION ET ALLOCATION DCA ---
-# On crée des scores ajustés avec sous-pondération β pour négatifs selon :
-#   adj_score = raw_score         if raw_score ≥ 0
-#             = β × (−raw_score) if raw_score < 0
-adj_scores = {}
-sum_adj = 0.0
-for k, v in raw_scores.items():
-    if v >= 0:
-        adj = v
-    else:
-        adj = beta * (-v)
-    adj_scores[k] = adj
-    sum_adj += adj
-sum_adj = sum_adj or 1.0
+# --- SHIFT ET ALLOCATION DCA ---
+# Détermination du décalage pour rendre tous les scores >= 0
+min_score = min(raw_scores.values())
+shift = -min_score if min_score < 0 else 0
+# Scores ajustés
+adj_scores = {k: v + shift for k, v in raw_scores.items()}
+# Somme des scores ajustés (évite zero)
+sum_adj = sum(adj_scores.values()) or 1.0
 # Allocation proportionnelle sur 50%
 allocations = {k: (v / sum_adj * 50) for k, v in adj_scores.items()}
 
-# Affichage sidebar allocations
+# --- AFFICHAGE DE L'ALLOCATION ---
 st.sidebar.header("Allocation DCA (50% actions)")
 for name, pct in allocations.items():
     st.sidebar.markdown(f"**{name}:** {pct:.1f}%")
     if debug:
-        # Descriptif de la formule en debug
         st.sidebar.write(
-            f"raw_score: {raw_scores[name]:+.2f}, "
-            f"adj_score: {adj_scores[name]:+.2f} = "
-            f"({'v' if raw_scores[name]>=0 else 'β × -v'})"
-            f" → {'v' if raw_scores[name]>=0 else f'{beta}×{-raw_scores[name]:.2f}'}"
+            f"raw_score: {raw_scores[name]:+.2f}, shift: {shift:.2f}, "
+            f"adj_score: {adj_scores[name]:+.2f}"
         )
 
 # --- AFFICHAGE PRINCIPAL ---
@@ -156,8 +147,8 @@ for idx, (name, series) in enumerate(prices.items()):
     if debug:
         st.write(f"--- DEBUG {name} ---")
         st.write(
-            "Formule adj_score = raw_score if raw_score ≥ 0 "
-            "else β × (-raw_score), avec β = {beta}"
+            "Formule shift: shift = -min(raw_scores) = {shift:.2f}, "
+            "adj_score = raw_score + shift"
         )
         for label, w in timeframes.items():
             if len(data) >= w:
@@ -171,14 +162,15 @@ for idx, (name, series) in enumerate(prices.items()):
             else:
                 st.write(f"{label}: pas assez de données")
 
-    # Graphique et badges
     alloc = allocations.get(name, 0)
     with cols[idx % 2]:
-        st.markdown(f"**{name}**: {last:.2f} " \
-                    f"<span style='color:{perf_color}'>{delta:+.2f}%</span>", unsafe_allow_html=True)
-        # ... reste inchangé ...
+        st.markdown(
+            f"**{name}**: {last:.2f} "
+            f"<span style='color:{perf_color}'>{delta:+.2f}%</span>",
+            unsafe_allow_html=True
+        )
+        # graph et badges inchangés...
         st.markdown(f"**Allocation DCA:** {alloc:.1f}%")
 
-# Clé FRED
-if macro_df.empty:
+# Clé FRED\ nif macro_df.empty:
     st.warning("🔑 Clé FRED_API_KEY manquante.")
