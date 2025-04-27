@@ -3,7 +3,7 @@
 Point d'entrée Streamlit pour le Dashboard DCA ETF.
 """
 import streamlit as st
-from dca_dashboard.dca_dashboard.constants import ETFS, TIMEFRAMES, MACRO_SERIES
+from dca_dashboard.constants import ETFS, TIMEFRAMES, MACRO_SERIES
 from dca_dashboard.data_loader import load_prices, load_macro
 from dca_dashboard.scoring import pct_change, score_and_style
 from dca_dashboard.plotting import make_timeseries_fig
