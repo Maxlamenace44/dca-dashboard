@@ -80,6 +80,10 @@ st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
 
+# Seuil de déviation et arbitrage
+threshold = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
+arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
+
 # VIX 3 mois
 try:
     vix = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
@@ -94,20 +98,33 @@ except:
 # Allocation dynamique
 st.sidebar.header("Allocation dynamique (%)")
 prices_temp = load_prices()
-total_g = sum(green_count(prices_temp[n].dropna()) for n in etfs) or 1
+scores = {}
 for name in etfs:
-    cnt = green_count(prices_temp[name].dropna())
-    alloc = cnt / total_g * 50
-    arrow = "▲" if cnt else ""
-    color = "green" if cnt else "gray"
+    s = prices_temp[name].dropna()
+    score = 0
+    for w in timeframes.values():
+        if len(s) >= w:
+            avg = s.tail(w).mean()
+            diff = (s.iloc[-1] - avg) / avg
+            # Poids selon nouveau principe
+            if diff < 0:
+                weight = 1
+            elif 0 <= abs(diff) < threshold/100:
+                weight = 0.5
+            else:
+                weight = -1
+        else:
+            weight = 0
+        score += weight
+    scores[name] = score
+
+total_score = sum(abs(v) for v in scores.values()) or 1
+for name in etfs:
+    alloc = scores[name] / total_score * 50
     st.sidebar.markdown(
-        f"**{name}:** {alloc:.1f}% <span style='color:{color}'>{arrow}{cnt}</span>",
+        f"**{name}:** {alloc:.1f}% <span style='color:blue'>({scores[name]:.1f})</span>",
         unsafe_allow_html=True
     )
-
-# Seuil de déviation et arbitrage
-threshold = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
-arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
 
 # --- CHARGEMENT PRINCIPAL ---
 prices = load_prices()
@@ -177,7 +194,7 @@ for idx, name in enumerate(etfs):
         for j, (lbl, w) in enumerate(timeframes.items()):
             avg = series.tail(w).mean() if len(series) >= w else None
             if avg is None:
-                bg, arrow, weight = "crimson", "↓", 1
+                bg, arrow, weight = "crimson", "↓", -1
                 tooltip = "Pas assez de données"
             else:
                 diff = (last - avg) / avg
@@ -186,7 +203,7 @@ for idx, name in enumerate(etfs):
                 elif 0 <= abs(diff) < threshold/100:
                     bg, arrow, weight = "orange", "↗", 0.5
                 else:
-                    bg, arrow, weight = "crimson", "↓", 1
+                    bg, arrow, weight = "crimson", "↓", -1
                 tooltip = f"Moyenne {lbl}: {avg:.2f}"
             surp_score += weight
             if badge_cols[j].button(lbl, key=f"{name}_{lbl}"):
