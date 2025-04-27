@@ -97,55 +97,74 @@ st.sidebar.header("Seuils arbitrage")
 thresholds = st.sidebar.multiselect("Choisir seuils (%)",[5,10,15,20,25],default=[5,10,15])
 
 # --- AFFICHAGE PRINCIPAL ---
-cols=st.columns(2)
-for idx,(name,series) in enumerate(price_df.items()):
-    delta=deltas[name]
-    perf_color="green" if delta>=0 else "crimson"
-    last=series.iloc[-1] if len(series) else None
-    price_str=f"{last:.2f} USD" if last is not None else "N/A"
-    gc=green_counts[name]
-    border="#28a745" if gc>=4 else "#ffc107" if gc>=2 else "#dc3545"
+cols = st.columns(2)
+for idx, (name, series) in enumerate(price_df.items()):
+    delta = deltas[name]
+    perf_color = "green" if delta >= 0 else "crimson"
+    last = series.iloc[-1] if len(series) else None
+    price_str = f"{last:.2f} USD" if last is not None else "N/A"
+    gc = green_counts[name]
+    border = "#28a745" if gc >= 4 else "#ffc107" if gc >= 2 else "#dc3545"
 
-    # Choix période et Sparkline
-    period=st.selectbox("Période",list(timeframes.keys()),index=list(timeframes.keys()).index("Annuel"),key=f"{name}_tf",help="Sélection de la période à afficher",)
-    window=timeframes[period]
-    data_plot=series.tail(window)
-    fig=px.line(data_plot, height=180)
-    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0),xaxis_showgrid=False,yaxis_showgrid=False,showlegend=False)
-    fig_html=fig.to_html(include_plotlyjs='cdn',full_html=False)
-
-    # Badges DCA
-    badges_html=""
-    if last is not None:
-        badges_html="".join([f"<span title='Moyenne {lbl}: {series.iloc[-w:].mean():.2f}' style='background:{'green' if last<series.iloc[-w:].mean() else 'crimson'};color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>" for lbl,w in timeframes.items()])
-
-    # Macro deux colonnes
-    items=[]
-    for lbl in macro_series:
-        if lbl in macro_df and not macro_df[lbl].dropna().empty:
-            val=macro_df[lbl].dropna().iloc[-1]
-            items.append(f"<li>{lbl}: {val:.2f}</li>")
-        else:
-            items.append(f"<li>{lbl}: N/A</li>")
-    half=len(items)//2+len(items)%2
-    left_html=''.join(items[:half])
-    right_html=''.join(items[half:])
-
-    # Assembly card
-    card_html=f'''<div style="border:3px solid {border};border-radius:12px;padding:12px;margin:4px 0;background:white;overflow:auto;">
-<h4 style="margin:4px 0">{name}: {price_str} <span style="color:{perf_color}">{delta:+.2f}%</span></h4>
-{fig_html}
-<div style="margin:8px 0;display:flex;gap:4px;">{badges_html}</div>
-<div style="text-align:right;font-size:13px;">Surpondétation: <span style="color:#1f77b4">{'🔵'*gc}</span> ({'Forte' if gc>=4 else 'Modérée' if gc>=2 else 'Faible'})</div>
-<div style="display:flex;gap:40px;margin-top:8px;font-size:12px;"><ul style="margin:0;padding-left:16px">{left_html}</ul><ul style="margin:0;padding-left:16px">{right_html}</ul></div></div>'''
-    with cols[idx%2]: html(card_html,height=430)
-
-    if idx%2==1 and thresholds:
-        for t in sorted(thresholds,reverse=True):
-            pairs=[(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
+    # Périodes interactives via onglets
+    tf_labels = list(timeframes.keys())
+    tab_objs = st.tabs(tf_labels)
+    for i, lbl in enumerate(tf_labels):
+        with cols[idx % 2]:
+            with tab_objs[i]:
+                # Filtrer données selon période
+                window = timeframes[lbl]
+                data_plot = series.tail(window)
+                # Sparkline
+                fig = px.line(data_plot, height=170)
+                fig.update_layout(
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    xaxis_title='Date', yaxis_title='Value',
+                    xaxis_showgrid=False, yaxis_showgrid=False,
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                # Détails de la carte
+                st.markdown(
+                    f"**{name}:** {price_str} (<span style='color:{perf_color}'>{delta:+.2f}%</span>)",
+                    unsafe_allow_html=True
+                )
+                # Badges DCA
+                badge_html = "".join(
+                    f"<span title='Moyenne {lbl2}: {series.iloc[-w:].mean():.2f}' "
+                    f"style='background:{'green' if last < series.iloc[-w:].mean() else 'crimson'};"
+                    "color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl2}</span>"
+                    for lbl2, w in timeframes.items()
+                )
+                st.markdown(badge_html, unsafe_allow_html=True)
+                # Surpondération
+                level = 'Forte' if gc>=4 else 'Modérée' if gc>=2 else 'Faible'
+                st.markdown(
+                    f"Surpondération: <span style='color:#1f77b4'>{'🔵'*gc}</span> ({level})",
+                    unsafe_allow_html=True
+                )
+                # Indicateurs macro en deux colonnes
+                items = []
+                for m in macro_series:
+                    if m in macro_df and not macro_df[m].dropna().empty:
+                        val = macro_df[m].dropna().iloc[-1]
+                        items.append(f"<li>{m}: {val:.2f}</li>")
+                    else:
+                        items.append(f"<li>{m}: N/A</li>")
+                half = len(items)//2 + len(items)%2
+                cols_macro = st.columns(2)
+                cols_macro[0].markdown(f"<ul style='padding-left:16px'>{''.join(items[:half])}</ul>", unsafe_allow_html=True)
+                cols_macro[1].markdown(f"<ul style='padding-left:16px'>{''.join(items[half:])}</ul>", unsafe_allow_html=True)
+    # Alertes arbitrage
+    if idx % 2 == 1 and thresholds:
+        for t in sorted(thresholds, reverse=True):
+            pairs = [(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
             if pairs:
                 st.warning(f"Écart > {t}% détecté :")
-                for i,j,d in pairs: st.write(f"- {i} vs {j}: {d:.1f}%")
+                for i,j,d in pairs:
+                    st.write(f"- {i} vs {j}: {d:.1f}%")
 
+# FRED warning
 if not st.secrets.get('FRED_API_KEY'):
+    st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
     st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
