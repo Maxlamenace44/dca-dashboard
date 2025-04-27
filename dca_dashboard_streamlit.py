@@ -28,8 +28,19 @@ def load_prices():
     start = end - timedelta(days=365*6)
     df = pd.DataFrame()
     for name, ticker in etfs.items():
-        data = yf.download(ticker, start=start, end=end, progress=False)
-        df[name] = data['Adj Close']
+        try:
+            data = yf.download(ticker, start=start, end=end, progress=False)
+            # Choisir colonne Adjusted Close si disponible, sinon Close
+            if 'Adj Close' in data.columns:
+                series = data['Adj Close']
+            elif 'Close' in data.columns:
+                series = data['Close']
+            else:
+                continue
+            df[name] = series
+        except Exception:
+            # En cas d'erreur, créer une série vide
+            df[name] = pd.Series(dtype=float)
     return df
 
 @st.cache_data
