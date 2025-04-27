@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Dashboard DCA ETF révisé avec calcul optimisé de la surpondération.
+Dashboard DCA ETF révisé pour s'assurer de 5 pondérations par indice (Hebdo, Mensuel, Trimestriel, Annuel, 5 ans).
 Basé sur votre script original citeturn0file0.
 """
 
@@ -42,20 +42,23 @@ macro_series = {
 
 # --- CHARGEMENT DES DONNÉES ---
 @st.cache_data
-def load_prices():
+def load_prices() -> pd.DataFrame:
     end = datetime.today()
-    start = end - timedelta(days=365*6)
+    max_w = max(timeframes.values())
+    trading_days_per_year = 252
+    est_days = int(max_w / trading_days_per_year * 365 * 1.1)
+    start = end - timedelta(days=est_days)
     df = pd.DataFrame()
     for name, ticker in etfs.items():
         try:
             data = yf.download(ticker, start=start, end=end, progress=False)
-            df[name] = data['Adj Close'] if 'Adj Close' in data.columns else data['Close']
+            df[name] = data.get('Adj Close', data.get('Close', pd.Series(dtype=float)))
         except:
             df[name] = pd.Series(dtype=float)
     return df
 
 @st.cache_data
-def load_macro():
+def load_macro() -> pd.DataFrame:
     api_key = st.secrets.get('FRED_API_KEY', '')
     if not api_key:
         return pd.DataFrame()
@@ -71,17 +74,12 @@ def load_macro():
     return df
 
 # --- FONCTIONS UTILES ---
+
 def pct_change(s: pd.Series) -> float:
     return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
 
+
 def score_and_style(diff: float, threshold_pct: float) -> Tuple[float, str, str]:
-    """
-    Quatre niveaux selon la déviation en % (threshold_pct) :
-      - Vert    : diff ≤ -threshold_pct ⇒ +1 pt
-      - Jaune   : -threshold_pct < diff ≤ 0 ⇒ +0.5 pt
-      - Orange  : 0 < diff < threshold_pct  ⇒ -0.5 pt
-      - Rouge   : diff ≥ threshold_pct      ⇒ -1 pt
-    """
     t = threshold_pct / 100.0
     if diff <= -t:
         return 1.0,  '↑', 'green'
@@ -96,7 +94,6 @@ def score_and_style(diff: float, threshold_pct: float) -> Tuple[float, str, str]
 st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
-
 threshold_pct = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
 arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
 debug_surp = st.sidebar.checkbox("Afficher débogage surpondération")
@@ -117,20 +114,25 @@ prices = load_prices()
 surp_scores = {}
 for name, series in prices.items():
     s = series.dropna()
-    # Moyennes pré-calculées
-    means = {w: s.tail(w).mean() for w in timeframes.values() if len(s) >= w}
-    # Poids
-    weights = [score_and_style((s.iloc[-1] - m) / m, threshold_pct)[0] for m in means.values()]
-    surp_scores[name] = sum(weights)
+    # Calcul des moyennes et pondérations par label
+    weights = {}
+    for label, w in timeframes.items():
+        m = s.tail(w).mean() if len(s) >= w else float('nan')
+        if pd.notna(m):
+            diff = (s.iloc[-1] - m) / m
+            weights[label] = score_and_style(diff, threshold_pct)[0]
+        else:
+            weights[label] = None
+    # Vérification de 5 pondérations valides
+    valid = [v for v in weights.values() if v is not None]
+    if debug_surp and len(valid) != len(timeframes):
+        st.sidebar.error(f"{name}: attendu 5 poids, obtenu {len(valid)} -> {weights}")
+    surp_scores[name] = sum(valid)
 
-# Normalisation sur somme des valeurs absolues
 denom = sum(abs(v) for v in surp_scores.values()) or 1
 for name, score in surp_scores.items():
     alloc = score / denom * 50
-    st.sidebar.markdown(
-        f"**{name}:** {alloc:.1f}% <span style='color:blue'>({score:+.1f})</span>",
-        unsafe_allow_html=True
-    )
+    st.sidebar.markdown(f"**{name}:** {alloc:.1f}% <span style='color:blue'>({score:+.1f})</span>", unsafe_allow_html=True)
 
 # --- CHARGEMENT INDICATEURS MACRO ---
 macro_df = load_macro()
@@ -139,7 +141,6 @@ deltas = {n: pct_change(prices[n].dropna()) for n in prices}
 # --- AFFICHAGE PRINCIPAL ---
 st.title("Dashboard DCA ETF")
 cols = st.columns(2)
-
 for idx, (name, series) in enumerate(prices.items()):
     data = series.dropna()
     if data.empty:
@@ -148,35 +149,31 @@ for idx, (name, series) in enumerate(prices.items()):
     delta = deltas[name]
     perf_color = 'green' if delta >= 0 else 'crimson'
 
-    # Calcul de la surpondération optimisé
-    means = {w: data.tail(w).mean() for w in timeframes.values() if len(data) >= w}
-    weights = []
-    for w, mean in means.items():
-        diff = (last - mean) / mean
-        weight, arrow, color = score_and_style(diff, threshold_pct)
-        weights.append(weight)
-    surp_score = sum(weights)
+    # Calcul des moyennes et pondérations
+    weights = {}
+    for label, w in timeframes.items():
+        m = data.tail(w).mean() if len(data) >= w else float('nan')
+        if pd.notna(m):
+            diff = (last - m) / m
+            weight, arrow, color = score_and_style(diff, threshold_pct)
+            weights[label] = weight
+        else:
+            weights[label] = None
+    valid = [v for v in weights.values() if v is not None]
+    surp_score = sum(valid)
 
-    # Affichage debug si demandé
     if debug_surp:
-        st.write(f"[{name}] Fenêtres et poids:", list(means.keys()), "→", weights, "→ Somme:", surp_score)
+        st.write(f"{name}: pondérations =>", weights)
 
-    # Bordure selon surpondération
     border = '#28a745' if surp_score > 0 else '#dc3545'
-
-    # Période via session_state
     key = f"win_{name}"
     if key not in st.session_state:
         st.session_state[key] = 'Annuel'
     period_days = timeframes[st.session_state[key]]
     df_plot = data.tail(period_days)
-
-    # Graphique
     fig = px.line(df_plot, height=300)
-    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
-                      xaxis_title='Date', yaxis_title='Valeur')
+    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), showlegend=False, xaxis_title='Date', yaxis_title='Valeur')
 
-    # Indicateurs macro
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -185,66 +182,41 @@ for idx, (name, series) in enumerate(prices.items()):
         else:
             items.append(f"<li>{lbl}: N/A</li>")
     half = len(items)//2 + len(items)%2
-    macro_html = (
-        "<div style='display:flex;gap:40px;font-size:12px;'>"
-        f"<ul style='margin:0;padding-left:16px'>{''.join(items[:half])}</ul>"
-        f"<ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul>"
-        "</div>"
-    )
+    macro_html = ("<div style='display:flex;gap:40px;font-size:12px;'>" +
+                  f"<ul style='margin:0;padding-left:16px'>{''.join(items[:half])}</ul>" +
+                  f"<ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul>" +
+                  "</div>")
 
-    # Affichage carte
     with cols[idx % 2]:
-        st.markdown(
-            f"<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;'>",
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;'>", unsafe_allow_html=True)
+        st.markdown(f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
 
-        # Badges colorés
-        badge_cols = st.columns(len(timeframes))
-        for j, (lbl, w) in enumerate(timeframes.items()):
-            if len(data) >= w:
-                avg = data.tail(w).mean()
-                diff = (last - avg) / avg
-                _, arrow, bg = score_and_style(diff, threshold_pct)
-                tooltip = f"Moyenne {lbl}: {avg:.2f}"
+        badges = st.columns(len(timeframes))
+        for i,(lbl,w) in enumerate(timeframes.items()):
+            m = data.tail(w).mean() if len(data)>=w else float('nan')
+            if pd.notna(m):
+                _, arrow, bg = score_and_style((last-m)/m, threshold_pct)
+                tooltip = f"Moyenne {lbl}: {m:.2f}"
             else:
-                arrow, bg = '↓', 'crimson'
-                tooltip = "Pas assez de données"
-            with badge_cols[j]:
+                arrow, bg, tooltip = '↓','crimson','Pas assez de données'
+            with badges[i]:
                 if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
                     st.session_state[key] = lbl
                 st.markdown(
-                    f"<span title='{tooltip}' style='background:{bg};color:white;"
-                    f"padding:4px 8px;border-radius:4px;display:inline-block;"
-                    f"font-size:12px;'>{lbl} {arrow}</span>",
+                    f"<span title='{tooltip}' style='background:{bg};color:white;padding:4px 8px;border-radius:4px;display:inline-block;font-size:12px;'>{lbl} {arrow}</span>",
                     unsafe_allow_html=True
                 )
 
-        # Surpondération et macro
-        st.markdown(
-            f"<div style='text-align:right;color:#1f77b4;'>"
-            f"Surpondération: {surp_score:.1f}</div>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {surp_score:.1f}</div>", unsafe_allow_html=True)
         st.markdown(macro_html, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Alertes d'arbitrage
         if idx % 2 == 1 and arb:
             for thr in arb:
-                pairs = [
-                    (a, b, abs(deltas[a] - deltas[b]))
-                    for a in deltas for b in deltas
-                    if a < b and abs(deltas[a] - deltas[b]) > thr
-                ]
+                pairs = [(a,b,abs(deltas[a]-deltas[b])) for a in deltas for b in deltas if a<b and abs(deltas[a]-deltas[b])>thr]
                 if pairs:
                     st.warning(f"Écart > {thr}% : {pairs}")
 
-# Clé FRED manquante
 if macro_df.empty:
     st.warning("🔑 Clé FRED_API_KEY manquante pour indicateurs macro.")
