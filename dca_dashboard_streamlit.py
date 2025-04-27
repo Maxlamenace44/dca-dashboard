@@ -69,21 +69,25 @@ def pct_change(s):
 
 def score_and_style(diff, threshold):
     """
-    Quatre niveaux selon la déviation:
-    - Vert: diff >= threshold ⇒ ↑ +1 pt
-    - Jaune: 0 <= diff < threshold ⇒ ↗ +0.5 pt
-    - Orange: -threshold < diff < 0 ⇒ ↘ -0.5 pt
-    - Rouge: diff <= -threshold ⇒ ↓ -1 pt
+    Quatre niveaux selon la déviation et souhait utilisateur:
+    - Rouge (diff ≥ threshold) ⇒ ↓ -1 pt
+    - Jaune (0 ≤ diff < threshold) ⇒ ↗ +0.5 pt
+    - Vert (-threshold ≤ diff < 0) ⇒ ↑ +1 pt
+    - Orange (diff < -threshold) ⇒ ↘ -0.5 pt
     """
     t = threshold / 100
     if diff >= t:
-        return 1, '↑', 'green'
-    elif diff >= 0:
-        return 0.5, '↗', '#c8e6c9'
-    elif diff > -t:
-        return -0.5, '↘', 'orange'
-    else:
+        # Rouge
         return -1, '↓', 'crimson'
+    elif diff >= 0:
+        # Jaune
+        return 0.5, '↗', '#c8e6c9'  # vert pâle pastel pour jaune
+    elif diff >= -t:
+        # Vert
+        return 1, '↑', 'green'
+    else:
+        # Orange
+        return -0.5, '↘', 'orange'
 
 # --- SIDEBAR ---
 st.sidebar.header("Paramètres de rééquilibrage")
