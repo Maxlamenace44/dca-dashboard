@@ -79,7 +79,7 @@ def score_and_style(diff, threshold):
     if diff > t:
         return 1, '↑', 'green'
     elif diff > 0:
-        return 0.5, '↗', 'yellow'
+        return 0.5, '↗', '#c8e6c9'  # vert pâle pastel
     elif diff > -t:
         return -0.5, '↘', 'orange'
     else:
@@ -193,9 +193,9 @@ for idx, (name, series) in enumerate(prices.items()):
         st.markdown(f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
 
-                        # Badges tri-couleurs (HTML boutons colorés)
-        badge_html = '<div style="display:flex;gap:4px;flex-wrap:wrap">'
-        for lbl, w in timeframes.items():
+                                # Badges tri-couleurs interactifs
+        badge_cols = st.columns(len(timeframes))
+        for j, (lbl, w) in enumerate(timeframes.items()):
             if len(data) >= w:
                 avg = data.tail(w).mean()
                 diff = (last - avg) / avg
@@ -204,18 +204,19 @@ for idx, (name, series) in enumerate(prices.items()):
             else:
                 arrow, bg = '↓', 'crimson'
                 tooltip = "Pas assez de données"
-            # Bouton HTML avec style
-            badge_html += (
-                f"<button title='{tooltip}' onclick=\"window.parent.postMessage({{'name':'{name}','lbl':'{lbl}'}},'*')\" "
-                f"style='background:{bg};color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer'>"
-                f"{lbl} {arrow}</button>"
-            )
-        badge_html += '</div>'
-        # Affichage des boutons
-        from streamlit.components.v1 import html as st_html
-        st_html(badge_html, height=40)
+            # bouton transparent pour gérer le clic
+            with badge_cols[j]:
+                if st.button(lbl, key=f"{name}_{lbl}"):
+                    st.session_state[key] = lbl
+                st.markdown(
+                    f"<span title='{tooltip}' style='background:{bg};"
+                    f"color:white;padding:4px 8px;border-radius:4px;display:inline-block;"
+                    f"font-size:12px;'>" 
+                    f"{lbl} {arrow}</span>",
+                    unsafe_allow_html=True
+                )
 
-        # Surpondération et macro et macro
+        # Surpondération et macro
         st.markdown(f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {surp_scores[name]:.1f}</div>", unsafe_allow_html=True)
         st.markdown(macro_html, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
