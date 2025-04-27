@@ -123,84 +123,78 @@ for idx, name in enumerate(etfs):
     gc = green_counts[name]
     border = '#28a745' if gc>=4 else '#ffc107' if gc>=2 else '#dc3545'
 
-    # Affichage dans la colonne dédiée
-    with cols[idx % 2]:
-        # Interactive badges (définissent la période)
-        badge_cols = st.columns(len(timeframes))
-        for i, (lbl, w) in enumerate(timeframes.items()):
-            avg = series_full[-w:].mean() if len(series_full) >= w else None
-            # Couleur tri-phase
-            if avg is None:
-                bg_color = 'crimson'
+    # Construire les badges interactifs inline dans le HTML
+    interactive_html = ""
+    for lbl, w in timeframes.items():
+        avg = series_full[-w:].mean() if len(series_full) >= w else None
+        if avg is None:
+            bg = 'crimson'
+        else:
+            diff = (last - avg) / avg
+            if diff < 0:
+                bg = 'green'
+            elif abs(diff) < 0.05:
+                bg = 'orange'
             else:
-                diff = (last - avg) / avg
-                if diff < 0:
-                    bg_color = 'green'
-                elif abs(diff) < 0.05:
-                    bg_color = 'orange'
-                else:
-                    bg_color = 'crimson'
-            title = f"Moyenne {lbl}: {avg:.2f}" if avg is not None else f"Pas assez de données pour {lbl}"
-            # Affiche badge statique
-            badge_cols[i].markdown(
-                f"<div style='background:{bg_color};color:white;padding:4px 8px;"
-                f"border-radius:4px;text-align:center;font-size:12px' title='{title}'>{lbl}</div>",
-                unsafe_allow_html=True
-            )
-            # Bouton invisible sur le badge
-            if badge_cols[i].button("", key=f"btn_{name}_{lbl}", help=f"Afficher {lbl}"):
-                st.session_state[f"window_{name}"] = lbl
-
-        # Récupère la période choisie
-        sel = st.session_state[f"window_{name}"]
-        window = timeframes[sel]
-        data_plot = series_full.tail(window)
-
-        # Titre et variation
-        st.markdown(f"**{name}: {price_str}** <span style='color:{perf_color}'>{delta:+.2f}%</span>", unsafe_allow_html=True)
-
-        # Graphique sparkline
-        fig = px.line(data_plot, height=200)
-        fig.update_layout(
-            margin=dict(l=0,r=0,t=0,b=0),
-            showlegend=False,
-            xaxis_title='Date',
-            yaxis_title='Valeur'
+                bg = 'crimson'
+        title = f"Moyenne {lbl}: {avg:.2f}" if avg is not None else f"Pas assez de données pour {lbl}"
+        # badge + bouton
+        interactive_html += (
+            f"<div style='position:relative;display:inline-block;margin-right:4px;'>"
+            f"<span title='{title}' style='background:{bg};color:white;padding:4px 8px;"
+            "border-radius:4px;font-size:12px;cursor:pointer'>{lbl}</span>"
+            f"<button onclick=\"window.parent.postMessage({{'badge':'{lbl}','name':'{name}'}}, '*')\" "
+            "style='position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;border:none;cursor:pointer;'></button>"
+            "</div>"
         )
-        st.plotly_chart(fig, use_container_width=True)
 
-        # Badges DCA statiques
-        static_badges = []
-        for lbl, w in timeframes.items():
-            avg = series_full[-w:].mean() if len(series_full) >= w else None
-            color_bg = 'green' if avg and last < avg else 'crimson'
-            title = f"Moyenne {lbl}: {avg:.2f}" if avg else f"Pas assez de données pour {lbl}"
-            static_badges.append(
-                f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;"
-                f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
-            )
-        st.markdown(' '.join(static_badges), unsafe_allow_html=True)
+    # Graphique sparkline
+    sel = st.session_state[f"window_{name}"]
+    window = timeframes[sel]
+    data_plot = series_full.tail(window)
+    fig = px.line(data_plot, height=200)
+    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), showlegend=False, xaxis_title='Date', yaxis_title='Valeur')
+    chart_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-        # Surpondération
-        st.markdown(f"Surpondération: {'🔵'*gc}")
+    # Badges DCA statiques
+    static_html = ''.join(
+        f"<span title='Moyenne {lbl}: {series_full[-w:].mean() if len(series_full)>=w else 'N/A'}' "
+        f"style='background:{'green' if avg is not None and last<series_full[-w:].mean() else 'crimson'};"
+        "color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
+        for lbl, w in timeframes.items()
+        for avg in [series_full[-w:].mean() if len(series_full)>=w else None]
+    )
 
-        # Indicateurs macro en deux colonnes
-        items = []
-        for lbl in macro_series:
-            if lbl in macro_df and not macro_df[lbl].dropna().empty:
-                val = macro_df[lbl].dropna().iloc[-1]
-                items.append(f"<li>{lbl}: {val:.2f}</li>")
-            else:
-                items.append(f"<li>{lbl}: N/A</li>")
-        half = len(items)//2 + len(items)%2
-        left_html = ''.join(items[:half])
-        right_html = ''.join(items[half:])
-        st.markdown(f"<div style='display:flex;gap:40px;font-size:12px;'>"
-                    f"<ul style='margin:0;padding-left:16px'>{left_html}</ul>"
-                    f"<ul style='margin:0;padding-left:16px'>{right_html}</ul>"
-                    f"</div>", unsafe_allow_html=True)
+    # Indicateurs macro en deux colonnes
+    items = []
+    for lbl in macro_series:
+        if lbl in macro_df and not macro_df[lbl].dropna().empty:
+            val = macro_df[lbl].dropna().iloc[-1]
+            items.append(f"<li>{lbl}: {val:.2f}</li>")
+        else:
+            items.append(f"<li>{lbl}: N/A</li>")
+    half = len(items)//2 + len(items)%2
+    left_html = ''.join(items[:half])
+    right_html = ''.join(items[half:])
 
-    # Alertes arbitrage après chaque paire
+    # Carte complète en HTML
+    card_html = f"""
+<div style='border:3px solid {border};border-radius:12px;padding:12px;margin:6px;background:white;'>
+  <h4 style='margin:4px 0'>{name}: {price_str} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>
+  <div style='margin-bottom:8px;overflow-x:auto;white-space:nowrap;'>{interactive_html}</div>
+  {chart_html}
+  <div style='margin-top:8px;'>{static_html}</div>
+  <div style='text-align:right;font-size:13px;margin-top:4px;'>Surpondération: <span style='color:#1f77b4'>{'🔵'*gc}</span></div>
+  <div style='display:flex;gap:40px;font-size:12px;margin-top:8px;'>
+    <ul style='margin:0;padding-left:16px'>{left_html}</ul>
+    <ul style='margin:0;padding-left:16px'>{right_html}</ul>
+  </div>
+</div>
+"""
+    with cols[idx % 2]:
+        html(card_html, height=460)
+
+    # Alertes arbitrage
     if idx % 2 == 1 and thresholds:
         for t in sorted(thresholds, reverse=True):
             pairs = [(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
@@ -210,6 +204,8 @@ for idx, name in enumerate(etfs):
                     st.write(f"- {i} vs {j}: {d:.1f}%")
 
 # FRED warning
+if not st.secrets.get('FRED_API_KEY'):
+    st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
 if not st.secrets.get('FRED_API_KEY'):
     st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
 if not st.secrets.get('FRED_API_KEY'):
