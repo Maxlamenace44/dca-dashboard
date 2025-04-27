@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Point d'entrée Streamlit pour le Dashboard DCA ETF.
+Les cartes changent de bordure selon le % d'allocation.
 """
 import streamlit as st
 from constants        import ETFS, TIMEFRAMES, MACRO_SERIES
@@ -30,7 +31,7 @@ debug = st.sidebar.checkbox("Afficher debug")
 prices   = load_prices()
 macro_df = load_macro()
 
-# --- CALCUL DES SCORES BRUTS ---
+# --- CALCUL DES SCORES BRUTS ET ALLOCATIONS ---
 raw_scores = {}
 for name, series in prices.items():
     s = series.dropna()
@@ -38,17 +39,11 @@ for name, series in prices.items():
         raw_scores[name] = 0.0
         continue
     last = s.iloc[-1]
-    score = sum(
-        score_and_style(
-            (last - s.tail(w).mean()) / s.tail(w).mean(),
-            threshold_pct
-        )[0]
-        for w in TIMEFRAMES.values()
-        if len(s) >= w
+    raw_scores[name] = sum(
+        score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
+        for w in TIMEFRAMES.values() if len(s) >= w
     )
-    raw_scores[name] = score
 
-# --- SHIFT & ALLOCATION DCA (50% actions) ---
 min_score = min(raw_scores.values())
 shift     = -min_score if min_score < 0 else 0.0
 adj_scores = {k: v + shift for k, v in raw_scores.items()}
@@ -66,8 +61,18 @@ for name, pct in allocations.items():
 
 # --- AFFICHAGE PRINCIPAL ---
 st.title("Dashboard DCA ETF")
-cols  = st.columns(2)
+cols   = st.columns(2)
 deltas = {n: pct_change(prices[n].dropna()) for n in prices}
+
+def get_border_color(pct: float) -> str:
+    """Rouge <4%, orange <6%, jaune >=6%, vert >10%."""
+    if pct < 4:
+        return "crimson"
+    if pct < 6:
+        return "orange"
+    if pct <= 10:
+        return "gold"
+    return "green"
 
 for idx, (name, series) in enumerate(prices.items()):
     data = series.dropna()
@@ -85,9 +90,11 @@ for idx, (name, series) in enumerate(prices.items()):
     fig   = make_timeseries_fig(data, period)
     alloc = allocations.get(name, 0.0)
 
+    border_color = get_border_color(alloc)
+
     # --- CARTE ETF ---
     with cols[idx % 2]:
-        begin_card()
+        begin_card(border_color)
 
         # Titre et variation %
         st.markdown(
