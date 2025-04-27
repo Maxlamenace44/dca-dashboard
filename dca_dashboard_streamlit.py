@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Dashboard DCA ETF avec allocation DCA pour 50% d'actions,
-utilisant un shift automatique pour sous-pondérer les scores négatifs.
+utilisant un shift automatique pour sous-pondérer les scores négatifs,
+et affichant pour chaque indice sa carte complète (graphique, badges, allocation).
 """
 
 import streamlit as st
@@ -41,7 +42,6 @@ macro_series = {
 }
 
 # --- FONCTIONS UTILES ---
-
 def pct_change(s: pd.Series) -> float:
     return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
 
@@ -64,13 +64,13 @@ if st.sidebar.button("🔄 Rafraîchir"):
 threshold_pct = st.sidebar.slider("Seuil déviation (%)", 1, 20, 10, 1)
 debug = st.sidebar.checkbox("Afficher debug")
 
-# --- CHARGEMENT DES DONNÉES ---
+# --- DONNÉES ---
 @st.cache_data
 def load_prices() -> pd.DataFrame:
     end = datetime.today()
     max_w = max(timeframes.values())
-    trading_days_per_year = 252
-    est_days = int(max_w / trading_days_per_year * 365 * 1.1)
+    trading_days = 252
+    est_days = int(max_w / trading_days * 365 * 1.1)
     start = end - timedelta(days=est_days)
     df = pd.DataFrame()
     for name, ticker in etfs.items():
@@ -97,37 +97,38 @@ def load_macro() -> pd.DataFrame:
             df[label] = pd.Series(dtype=float)
     return df
 
-# --- CALCUL DES SCORES BRUTS ---
+# --- CALCUL SCORES BRUTS ---
 prices = load_prices()
 raw_scores = {}
 for name, series in prices.items():
     s = series.dropna()
-    last = s.iloc[-1] if len(s) else float('nan')
-    score = sum(
-        score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
-        for w in timeframes.values() if len(s) >= w
-    )
+    if len(s) < 1:
+        raw_scores[name] = 0.0
+        continue
+    last = s.iloc[-1]
+    score = 0.0
+    for w in timeframes.values():
+        if len(s) >= w:
+            m = s.tail(w).mean()
+            diff = (last - m) / m
+            weight, _, _ = score_and_style(diff, threshold_pct)
+            score += weight
     raw_scores[name] = score
 
-# --- SHIFT ET ALLOCATION DCA ---
-# Détermination du décalage pour rendre tous les scores >= 0
+# --- SHIFT & ALLOCATION DCA ---
 min_score = min(raw_scores.values())
-shift = -min_score if min_score < 0 else 0
-# Scores ajustés
+shift = -min_score if min_score < 0 else 0.0
 adj_scores = {k: v + shift for k, v in raw_scores.items()}
-# Somme des scores ajustés (évite zero)
 sum_adj = sum(adj_scores.values()) or 1.0
-# Allocation proportionnelle sur 50%
 allocations = {k: (v / sum_adj * 50) for k, v in adj_scores.items()}
 
-# --- AFFICHAGE DE L'ALLOCATION ---
+# --- SIDEBAR ALLOCATION ---
 st.sidebar.header("Allocation DCA (50% actions)")
 for name, pct in allocations.items():
     st.sidebar.markdown(f"**{name}:** {pct:.1f}%")
     if debug:
         st.sidebar.write(
-            f"raw_score: {raw_scores[name]:+.2f}, shift: {shift:.2f}, "
-            f"adj_score: {adj_scores[name]:+.2f}"
+            f"raw={raw_scores[name]:+.2f}, shift={shift:.2f}, adj={adj_scores[name]:+.2f}"
         )
 
 # --- AFFICHAGE PRINCIPAL ---
@@ -144,33 +145,84 @@ for idx, (name, series) in enumerate(prices.items()):
     delta = deltas.get(name, 0.0)
     perf_color = 'green' if delta >= 0 else 'crimson'
 
+    # Debug détaillé
     if debug:
         st.write(f"--- DEBUG {name} ---")
-        st.write(
-            "Formule shift: shift = -min(raw_scores) = {shift:.2f}, "
-            "adj_score = raw_score + shift"
-        )
-        for label, w in timeframes.items():
+        st.write(f"Formule : shift = {shift:.2f}, adj_score = raw_score + shift")
+        for lbl, w in timeframes.items():
             if len(data) >= w:
                 m = data.tail(w).mean()
                 diff = (last - m) / m
-                weight, arrow, _ = score_and_style(diff, threshold_pct)
-                st.write(
-                    f"{label}: last={last:.2f}, mean={m:.2f}, diff={diff:.4f}, "
-                    f"score={weight:+.1f}"
-                )
+                wt, arrow, col = score_and_style(diff, threshold_pct)
+                st.write(f"{lbl}: last={last:.2f}, mean={m:.2f}, diff={diff:.4f}, score={wt:+.1f}")
             else:
-                st.write(f"{label}: pas assez de données")
+                st.write(f"{lbl}: N/A")
 
-    alloc = allocations.get(name, 0)
+    # Carte ETF
     with cols[idx % 2]:
         st.markdown(
-            f"**{name}**: {last:.2f} "
-            f"<span style='color:{perf_color}'>{delta:+.2f}%</span>",
+            f"<div style='border:2px solid #1f77b4; border-radius:6px; padding:12px; margin:6px;'>",
             unsafe_allow_html=True
         )
-        # graph et badges inchangés...
-        st.markdown(f"**Allocation DCA:** {alloc:.1f}%")
+        st.markdown(
+            f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>",
+            unsafe_allow_html=True
+        )
+        # Graphique
+        key = f"win_{name}"
+        if key not in st.session_state:
+            st.session_state[key] = 'Annuel'
+        period = timeframes[st.session_state[key]]
+        df_plot = data.tail(period)
+        fig = px.line(df_plot, height=200)
+        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
 
-# Clé FRED\ nif macro_df.empty:
+        # Badges
+        cols_badge = st.columns(len(timeframes))
+        for i, (lbl, w) in enumerate(timeframes.items()):
+            if len(data) >= w:
+                m = data.tail(w).mean()
+                diff = (last - m) / m
+                _, arrow, bg = score_and_style(diff, threshold_pct)
+                tooltip = f"Moyenne {lbl}: {m:.2f}"
+            else:
+                arrow, bg, tooltip = '↓','crimson','N/A'
+            with cols_badge[i]:
+                if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
+                    st.session_state[key] = lbl
+                st.markdown(
+                    f"<span title='{tooltip}' style='background:{bg};color:white;"
+                    f"padding:4px;border-radius:4px;font-size:12px;'>{lbl} {arrow}</span>",
+                    unsafe_allow_html=True
+                )
+
+        # Allocation DCA
+        alloc = allocations.get(name, 0)
+        st.markdown(
+            f"<div style='text-align:right;color:#ff7f0e;'>"
+            f"Allocation DCA: {alloc:.1f}%</div>", unsafe_allow_html=True
+        )
+
+        # Macro indicateurs
+        items = []
+        for lbl in macro_series:
+            if lbl in macro_df and not macro_df[lbl].dropna().empty:
+                val = macro_df[lbl].dropna().iloc[-1]
+                items.append(f"<li>{lbl}: {val:.2f}</li>")
+            else:
+                items.append(f"<li>{lbl}: N/A</li>")
+        half = len(items)//2 + len(items)%2
+        st.markdown(
+            "<div style='display:flex;gap:20px;'>" +
+            f"<ul style='margin:0;padding-left:16px'>{''.join(items[:half])}</ul>" +
+            f"<ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul>" +
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# Clé FRED
+i f macro_df.empty:
     st.warning("🔑 Clé FRED_API_KEY manquante.")
