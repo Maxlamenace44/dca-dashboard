@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Dashboard DCA ETF révisé pour s'assurer de 5 pondérations par indice (Hebdo, Mensuel, Trimestriel, Annuel, 5 ans).
+Dashboard DCA ETF révisé pour s'assurer de 5 pondérations par indice
+et enrichir le debug avec score, moyenne, seuil, diff et valeur du jour.
 Basé sur votre script original citeturn0file0.
 """
 
@@ -114,19 +115,25 @@ prices = load_prices()
 surp_scores = {}
 for name, series in prices.items():
     s = series.dropna()
-    # Calcul des moyennes et pondérations par label
     weights = {}
+    last = s.iloc[-1]
     for label, w in timeframes.items():
         m = s.tail(w).mean() if len(s) >= w else float('nan')
         if pd.notna(m):
-            diff = (s.iloc[-1] - m) / m
-            weights[label] = score_and_style(diff, threshold_pct)[0]
+            diff = (last - m) / m
+            weight, _, _ = score_and_style(diff, threshold_pct)
+            weights[label] = dict(
+                last=last,
+                mean=m,
+                threshold=threshold_pct,
+                diff=diff,
+                score=weight
+            )
         else:
             weights[label] = None
-    # Vérification de 5 pondérations valides
-    valid = [v for v in weights.values() if v is not None]
+    valid = [v['score'] for v in weights.values() if v]
     if debug_surp and len(valid) != len(timeframes):
-        st.sidebar.error(f"{name}: attendu 5 poids, obtenu {len(valid)} -> {weights}")
+        st.sidebar.error(f"{name}: attendu 5 poids, obtenu {len(valid)}")
     surp_scores[name] = sum(valid)
 
 denom = sum(abs(v) for v in surp_scores.values()) or 1
@@ -149,21 +156,26 @@ for idx, (name, series) in enumerate(prices.items()):
     delta = deltas[name]
     perf_color = 'green' if delta >= 0 else 'crimson'
 
-    # Calcul des moyennes et pondérations
+    # Calcul détaillé pour debug
     weights = {}
     for label, w in timeframes.items():
         m = data.tail(w).mean() if len(data) >= w else float('nan')
         if pd.notna(m):
             diff = (last - m) / m
             weight, arrow, color = score_and_style(diff, threshold_pct)
-            weights[label] = weight
+            weights[label] = dict(
+                last=last,
+                mean=m,
+                threshold=threshold_pct,
+                diff=diff,
+                score=weight
+            )
         else:
             weights[label] = None
-    valid = [v for v in weights.values() if v is not None]
-    surp_score = sum(valid)
+    surp_score = sum(v['score'] for v in weights.values() if v)
 
     if debug_surp:
-        st.write(f"{name}: pondérations =>", weights)
+        st.write(f"DEBUG {name}:", weights)
 
     border = '#28a745' if surp_score > 0 else '#dc3545'
     key = f"win_{name}"
@@ -197,7 +209,7 @@ for idx, (name, series) in enumerate(prices.items()):
             m = data.tail(w).mean() if len(data)>=w else float('nan')
             if pd.notna(m):
                 _, arrow, bg = score_and_style((last-m)/m, threshold_pct)
-                tooltip = f"Moyenne {lbl}: {m:.2f}"
+                tooltip = f"Moyenne {lbl}: {m:.2f}" 
             else:
                 arrow, bg, tooltip = '↓','crimson','Pas assez de données'
             with badges[i]:
