@@ -161,9 +161,6 @@ for idx, name in enumerate(etfs):
         "</div>"
     )
 
-    # Surpondération
-    surp_html = f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {'🔵'*green_counts[name]}</div>"
-
     # Affichage de la carte
     with cols[idx % 2]:
         st.markdown(f"<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;'>",
@@ -174,33 +171,35 @@ for idx, name in enumerate(etfs):
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Badges tri-couleurs interactifs
+        # Badges tri-couleurs et surpondération
+        surp_score = 0
         badge_cols = st.columns(len(timeframes))
         for j, (lbl, w) in enumerate(timeframes.items()):
             avg = series.tail(w).mean() if len(series) >= w else None
             if avg is None:
-                bg = "crimson"
+                bg, arrow, weight = "crimson", "↓", 1
                 tooltip = "Pas assez de données"
             else:
                 diff = (last - avg) / avg
                 if diff < 0:
-                    bg = "green"
+                    bg, arrow, weight = "green", "↑", 1
                 elif 0 <= abs(diff) < threshold/100:
-                    bg = "orange"
+                    bg, arrow, weight = "orange", "↗", 0.5
                 else:
-                    bg = "crimson"
+                    bg, arrow, weight = "crimson", "↓", 1
                 tooltip = f"Moyenne {lbl}: {avg:.2f}"
-
+            surp_score += weight
             if badge_cols[j].button(lbl, key=f"{name}_{lbl}"):
                 st.session_state[key] = lbl
-
             badge_cols[j].markdown(
                 f"<span title='{tooltip}' "
-                f"style='background:{bg};color:white;padding:4px 8px;border-radius:4px;font-size:12px;'>{lbl}</span>",
+                f"style='background:{bg};color:white;padding:4px 8px;border-radius:4px;font-size:12px;'>"
+                f"{lbl} {arrow}</span>",
                 unsafe_allow_html=True
             )
 
-        # Surpondération et indicateurs macro
+        # Affichage surpondération et macro
+        surp_html = f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {surp_score}</div>"
         st.markdown(surp_html, unsafe_allow_html=True)
         st.markdown(macro_html, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
