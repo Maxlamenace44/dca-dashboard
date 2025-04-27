@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Point d'entrée Streamlit pour le Dashboard DCA ETF.
-Les cartes changent de bordure selon le % d'allocation.
+Les cartes changent de bordure selon le % d’allocation.
 """
 import streamlit as st
 from constants        import ETFS, TIMEFRAMES, MACRO_SERIES
@@ -31,7 +31,7 @@ debug = st.sidebar.checkbox("Afficher debug")
 prices   = load_prices()
 macro_df = load_macro()
 
-# --- CALCUL DES SCORES BRUTS ET ALLOCATIONS ---
+# --- CALCUL DES SCORES ET ALLOCATIONS ---
 raw_scores = {}
 for name, series in prices.items():
     s = series.dropna()
@@ -40,23 +40,28 @@ for name, series in prices.items():
         continue
     last = s.iloc[-1]
     raw_scores[name] = sum(
-        score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
-        for w in TIMEFRAMES.values() if len(s) >= w
+        score_and_style(
+            (last - s.tail(w).mean()) / s.tail(w).mean(),
+            threshold_pct
+        )[0]
+        for w in TIMEFRAMES.values()
+        if len(s) >= w
     )
 
-min_score = min(raw_scores.values())
-shift     = -min_score if min_score < 0 else 0.0
-adj_scores = {k: v + shift for k, v in raw_scores.items()}
-total      = sum(adj_scores.values()) or 1.0
+min_score   = min(raw_scores.values())
+shift       = -min_score if min_score < 0 else 0.0
+adj_scores  = {k: v + shift for k, v in raw_scores.items()}
+total       = sum(adj_scores.values()) or 1.0
 allocations = {k: v / total * 50 for k, v in adj_scores.items()}
 
-# --- AFFICHAGE SIDEBAR ALLOCATIONS ---
+# --- SIDEBAR ALLOCATIONS ---
 st.sidebar.header("Allocation DCA (50% actions)")
 for name, pct in allocations.items():
     st.sidebar.markdown(f"**{name}:** {pct:.1f}%")
     if debug:
         st.sidebar.write(
-            f"raw={raw_scores[name]:+.2f}, shift={shift:.2f}, adj={adj_scores[name]:+.2f}"
+            f"raw={raw_scores[name]:+.2f}, "
+            f"shift={shift:.2f}, adj={adj_scores[name]:+.2f}"
         )
 
 # --- AFFICHAGE PRINCIPAL ---
@@ -65,7 +70,7 @@ cols   = st.columns(2)
 deltas = {n: pct_change(prices[n].dropna()) for n in prices}
 
 def get_border_color(pct: float) -> str:
-    """Rouge <4%, orange <6%, jaune >=6%, vert >10%."""
+    """Détermine la couleur de la bordure selon le % d’allocation."""
     if pct < 4:
         return "crimson"
     if pct < 6:
@@ -79,24 +84,24 @@ for idx, (name, series) in enumerate(prices.items()):
     if data.empty:
         continue
 
+    # Performances et graphique
     last       = data.iloc[-1]
     delta      = deltas.get(name, 0.0)
     perf_color = 'green' if delta >= 0 else 'crimson'
-    # Récupère la période choisie en session (par défaut 'Annuel')
     win_key    = f"win_{name}"
     period_lbl = st.session_state.get(win_key, 'Annuel')
     period     = TIMEFRAMES[period_lbl]
+    fig        = make_timeseries_fig(data, period)
 
-    fig   = make_timeseries_fig(data, period)
-    alloc = allocations.get(name, 0.0)
-
+    # % allocation et couleur de bordure
+    alloc        = allocations.get(name, 0.0)
     border_color = get_border_color(alloc)
 
     # --- CARTE ETF ---
     with cols[idx % 2]:
         begin_card(border_color)
 
-        # Titre et variation %
+        # Titre + variation %
         st.markdown(
             f"**{name}: {last:.2f} "
             f"<span style='color:{perf_color}'>{delta:+.2f}%</span>**",
@@ -106,7 +111,7 @@ for idx, (name, series) in enumerate(prices.items()):
         # Graphique
         st.plotly_chart(fig, use_container_width=True)
 
-        # Badges interactifs
+        # Badges interactifs par timeframe
         badge_cols = st.columns(len(TIMEFRAMES))
         for i, (lbl, w) in enumerate(TIMEFRAMES.items()):
             with badge_cols[i]:
@@ -122,9 +127,8 @@ for idx, (name, series) in enumerate(prices.items()):
 
                 st.markdown(
                     f"<span title='Moyenne {lbl}: {m if 'm' in locals() else 'N/A':.2f}' "
-                    f"style='background:{bg};color:white;"
-                    f"padding:4px;border-radius:4px;font-size:12px;'>"
-                    f"{lbl} {arrow}</span>",
+                    f"style='background:{bg};color:white; padding:4px;"
+                    f"border-radius:4px;font-size:12px;'>{lbl} {arrow}</span>",
                     unsafe_allow_html=True
                 )
 
@@ -135,7 +139,7 @@ for idx, (name, series) in enumerate(prices.items()):
             unsafe_allow_html=True
         )
 
-        # Macro-indicateurs
+        # Macro-indicateurs en deux colonnes
         items = []
         for lbl in MACRO_SERIES:
             if lbl in macro_df and not macro_df[lbl].dropna().empty:
