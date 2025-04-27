@@ -65,21 +65,21 @@ def load_macro():
 
 # --- FONCTIONS UTILES ---
 def pct_change(s):
-    return (s.iloc[-1] / s.iloc[-2] - 1) * 100 if len(s) > 1 else 0.0
+    return float((s.iloc[-1] / s.iloc[-2] - 1) * 100) if len(s) > 1 else 0.0
 
 def score_and_style(diff, threshold):
     """
     Quatre niveaux selon la déviation:
-    - Vert: diff > threshold ⇒ ↑ +1 point
-    - Jaune: 0 < diff ≤ threshold ⇒ ↗ +0.5 point
-    - Orange: -threshold ≤ diff < 0 ⇒ ↘ -0.5 point
-    - Rouge: diff < -threshold ⇒ ↓ -1 point
+    - Vert: diff >= threshold ⇒ ↑ +1 pt
+    - Jaune: 0 <= diff < threshold ⇒ ↗ +0.5 pt
+    - Orange: -threshold < diff < 0 ⇒ ↘ -0.5 pt
+    - Rouge: diff <= -threshold ⇒ ↓ -1 pt
     """
     t = threshold / 100
-    if diff > t:
+    if diff >= t:
         return 1, '↑', 'green'
-    elif diff > 0:
-        return 0.5, '↗', '#c8e6c9'  # vert pâle pastel
+    elif diff >= 0:
+        return 0.5, '↗', '#c8e6c9'
     elif diff > -t:
         return -0.5, '↘', 'orange'
     else:
@@ -104,13 +104,12 @@ try:
 except:
     st.sidebar.write("VIX non disponible")
 
-# --- ALLOCATION DYNAMIQUE (calcul unique) ---
+# --- ALLOCATION DYNAMIQUE ---
 st.sidebar.header("Allocation dynamique (%)")
-prices_temp = load_prices()
+prices = load_prices()
 surp_scores = {}
-for name, series in prices_temp.items():
+for name, series in prices.items():
     s = series.dropna()
-    # calcul du score total selon pondération demandée
     score = 0
     for w in timeframes.values():
         if len(s) >= w:
@@ -119,8 +118,7 @@ for name, series in prices_temp.items():
             score += weight
     surp_scores[name] = score
 
-# Affichage de l'allocation dynamique avec score brut
-# on normalise par la somme des valeurs absolues pour répartir 50%
+# Normalisation sur somme des valeurs absolues
 denom = sum(abs(v) for v in surp_scores.values()) or 1
 for name, score in surp_scores.items():
     alloc = score / denom * 50
@@ -129,22 +127,9 @@ for name, score in surp_scores.items():
         unsafe_allow_html=True
     )
 
-# --- CHARGEMENT PRINCIPAL ---
-prices = prices_temp  # déjà chargé
+# --- CHARGEMENT INDICATEURS MACRO ---
 macro_df = load_macro()
-deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
-
-prices = prices_temp  # déjà chargé
-macro_df = load_macro()
-deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
-
-prices = prices_temp  # déjà chargé
-macro_df = load_macro()
-deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
-
-prices = prices_temp  # déjà chargé
-macro_df = load_macro()
-deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
+deltas = {n: pct_change(prices[n].dropna()) for n in prices}
 
 # --- AFFICHAGE PRINCIPAL ---
 st.title("Dashboard DCA ETF")
@@ -157,7 +142,17 @@ for idx, (name, series) in enumerate(prices.items()):
     last = data.iloc[-1]
     delta = deltas[name]
     perf_color = 'green' if delta >= 0 else 'crimson'
-    border = '#28a745' if surp_scores[name] > 0 else '#dc3545'
+
+    # Calcul local de la surpondération
+    surp_score = 0
+    for w in timeframes.values():
+        if len(data) >= w:
+            diff = (last - data.tail(w).mean()) / data.tail(w).mean()
+            weight, _, _ = score_and_style(diff, threshold)
+            surp_score += weight
+
+    # Bordure selon surp_score
+    border = '#28a745' if surp_score > 0 else '#dc3545'
 
     # Période via session_state
     key = f"win_{name}"
@@ -171,7 +166,7 @@ for idx, (name, series) in enumerate(prices.items()):
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
                       xaxis_title='Date', yaxis_title='Valeur')
 
-    # Indicateurs macro
+    # Macro indicateurs
     items = []
     for lbl in macro_series:
         if lbl in macro_df and not macro_df[lbl].dropna().empty:
@@ -187,13 +182,19 @@ for idx, (name, series) in enumerate(prices.items()):
         "</div>"
     )
 
-    # Carte
+    # Affichage carte
     with cols[idx % 2]:
-        st.markdown(f"<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;'>", unsafe_allow_html=True)
-        st.markdown(f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;'>",
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>",
+            unsafe_allow_html=True
+        )
         st.plotly_chart(fig, use_container_width=True)
 
-                                # Badges tri-couleurs interactifs
+        # Badges colorés
         badge_cols = st.columns(len(timeframes))
         for j, (lbl, w) in enumerate(timeframes.items()):
             if len(data) >= w:
@@ -204,27 +205,33 @@ for idx, (name, series) in enumerate(prices.items()):
             else:
                 arrow, bg = '↓', 'crimson'
                 tooltip = "Pas assez de données"
-            # bouton transparent pour gérer le clic
             with badge_cols[j]:
-                if st.button(lbl, key=f"{name}_{lbl}"):
+                if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
                     st.session_state[key] = lbl
                 st.markdown(
-                    f"<span title='{tooltip}' style='background:{bg};"
-                    f"color:white;padding:4px 8px;border-radius:4px;display:inline-block;"
-                    f"font-size:12px;'>" 
-                    f"{lbl} {arrow}</span>",
+                    f"<span title='{tooltip}' style='background:{bg};color:white;"
+                    f"padding:4px 8px;border-radius:4px;display:inline-block;"
+                    f"font-size:12px;'>{lbl} {arrow}</span>",
                     unsafe_allow_html=True
                 )
 
         # Surpondération et macro
-        st.markdown(f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {surp_scores[name]:.1f}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='text-align:right;color:#1f77b4;'>"
+            f"Surpondération: {surp_score:.1f}</div>",
+            unsafe_allow_html=True
+        )
         st.markdown(macro_html, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         # Alertes d'arbitrage
         if idx % 2 == 1 and arb:
             for thr in arb:
-                pairs = [(a, b, abs(deltas[a] - deltas[b])) for a in deltas for b in deltas if a < b and abs(deltas[a] - deltas[b]) > thr]
+                pairs = [
+                    (a, b, abs(deltas[a] - deltas[b]))
+                    for a in deltas for b in deltas
+                    if a < b and abs(deltas[a] - deltas[b]) > thr
+                ]
                 if pairs:
                     st.warning(f"Écart > {thr}% : {pairs}")
 
