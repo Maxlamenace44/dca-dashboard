@@ -103,26 +103,40 @@ except:
 st.sidebar.header("Allocation dynamique (%)")
 prices_temp = load_prices()
 surp_scores = {}
-for name, s in prices_temp.items():
-    series = s.dropna()
+for name, series in prices_temp.items():
+    s = series.dropna()
+    # calcul du score total selon pondération demandée
     score = 0
     for w in timeframes.values():
-        if len(series) >= w:
-            diff = (series.iloc[-1] - series.tail(w).mean()) / series.tail(w).mean()
+        if len(s) >= w:
+            diff = (s.iloc[-1] - s.tail(w).mean()) / s.tail(w).mean()
             weight, _, _ = score_and_style(diff, threshold)
             score += weight
     surp_scores[name] = score
 
-# Normalisation et affichage
-total = sum(abs(v) for v in surp_scores.values()) or 1
+# Affichage de l'allocation dynamique avec score brut
+# on normalise par la somme des valeurs absolues pour répartir 50%
+denom = sum(abs(v) for v in surp_scores.values()) or 1
 for name, score in surp_scores.items():
-    alloc = score / total * 50
+    alloc = score / denom * 50
     st.sidebar.markdown(
-        f"**{name}:** {alloc:.1f}% <span style='color:blue'>({score:.1f})</span>",
+        f"**{name}:** {alloc:.1f}% <span style='color:blue'>({score:+.1f})</span>",
         unsafe_allow_html=True
     )
 
 # --- CHARGEMENT PRINCIPAL ---
+prices = prices_temp  # déjà chargé
+macro_df = load_macro()
+deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
+
+prices = prices_temp  # déjà chargé
+macro_df = load_macro()
+deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
+
+prices = prices_temp  # déjà chargé
+macro_df = load_macro()
+deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
+
 prices = prices_temp  # déjà chargé
 macro_df = load_macro()
 deltas = {name: pct_change(series.dropna()) for name, series in prices.items()}
