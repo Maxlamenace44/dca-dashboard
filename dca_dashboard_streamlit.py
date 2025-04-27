@@ -160,7 +160,7 @@ for idx, name in enumerate(etfs):
             f"<span title='{title}' style='background:{color_bg};color:white;padding:3px 6px;"  
             f"border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
         )
-    badges_html = ''.join(badges)(badges)
+    badges_html = ''.join(badges)
 
     # Macro in two columns
     items = []
