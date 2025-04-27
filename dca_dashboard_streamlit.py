@@ -109,81 +109,89 @@ thresholds = st.sidebar.multiselect("Choisir seuils (%)", [5,10,15,20,25], defau
 
 # --- AFFICHAGE PRINCIPAL ---
 cols = st.columns(2)
-for idx,name in enumerate(etfs):
+for idx, name in enumerate(etfs):
     prices = prices_full[name]
     last = prices.iloc[-1]
     price_str = f"{last:.2f}"
     delta = deltas[name]
-    perf_color = 'green' if delta>=0 else 'crimson'
+    perf_color = 'green' if delta >= 0 else 'crimson'
     gc = green_counts[name]
-    border = '#28a745' if gc>=4 else '#ffc107' if gc>=2 else '#dc3545'
+    border = '#28a745' if gc >= 4 else '#ffc107' if gc >=2 else '#dc3545'
 
-    # Interactive badges HTML\    
-    badges_int = ''
-    for lbl,w in timeframes.items():
-        avg = prices[-w:].mean() if len(prices)>=w else None
-        if avg is None:
-            bg='crimson'
-        else:
-            diff=(last-avg)/avg
-            bg = 'green' if diff<0 else 'orange' if abs(diff)<0.05 else 'crimson'
-        title = f"Moyenne {lbl}: {avg:.2f}" if avg else f"Pas assez de données"
-        badges_int += (
-            f"<div style='position:relative;display:inline-block;margin-right:4px;'>"
-            f"<span title='{title}' style='background:{bg};color:white;padding:4px 8px;"
-            f"border-radius:4px;font-size:12px'>{lbl}</span>"
-            f"<button onclick=\"window.parent.postMessage({{'badge':'{lbl}','name':'{name}'}}, '*')\" "
-            f"style='position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;'></button></div>"
-        )
-
-    # Period and plot
+    # Créer graphique sparkline
     sel = st.session_state[f"window_{name}"]
     window = timeframes[sel]
-    dfp = prices.tail(window)
-    fig=px.line(dfp, height=200)
-    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0),showlegend=False,xaxis_title='Date',yaxis_title='Valeur')
-    chart = fig.to_html(include_plotlyjs='cdn', full_html=False)
+    df_window = prices.tail(window)
+    fig = px.line(df_window, height=200)
+    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), showlegend=False, xaxis_title='Date', yaxis_title='Valeur')
+    chart_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-    # Static badges\    
-    badges_stat = ''.join(
-        f"<span title='Moyenne {lbl}: {prices[-w:].mean():.2f}' style='background:{'green' if prices.iloc[-1]<prices[-w:].mean() else 'crimson'};"
-        f"color:white;padding:3px 6px;border-radius:4px;margin-right:4px;font-size:12px'>{lbl}</span>"
-        for lbl,w in timeframes.items() if len(prices)>=w
+    # Construire badges tri-couleurs interactifs
+    badges_html = ''
+    for lbl, w in timeframes.items():
+        avg = prices.tail(w).mean() if len(prices) >= w else None
+        if avg is None:
+            bg = 'crimson'
+        else:
+            diff = (last - avg) / avg
+            if diff < 0:
+                bg = 'green'
+            elif abs(diff) < 0.05:
+                bg = 'orange'
+            else:
+                bg = 'crimson'
+        title = f"Moyenne {lbl}: {avg:.2f}" if avg is not None else f"Pas assez de données"
+        # bouton + badge
+        badges_html += (
+            f"<div style='display:inline-block;margin-right:4px;position:relative;'>"
+            f"<button onclick=\"window.parent.postMessage({{'badge':'{lbl}','name':'{name}'}}, '*')\" "
+            "style='position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;'></button>"
+            f"<span title='{title}' style='background:{bg};color:white;padding:4px 8px;border-radius:4px;font-size:12px;'>{lbl}</span>"
+            "</div>"
+        )
+
+    # Indicateur de surpondération aligné à droite
+    surp_html = f"<div style='text-align:right;color:#1f77b4;font-size:14px;'>Surpondération: {'🔵'*gc}</div>"
+
+    # Indicateurs macro en 2 colonnes
+    macro_items = []
+    for lbl in macro_series:
+        val = macro_df[lbl].dropna().iloc[-1] if lbl in macro_df and not macro_df[lbl].dropna().empty else None
+        macro_items.append(f"<li>{lbl}: {val:.2f if val else 'N/A'}</li>")
+    half = len(macro_items)//2 + len(macro_items)%2
+    left_macro = ''.join(macro_items[:half])
+    right_macro = ''.join(macro_items[half:])
+    macro_html = (
+        "<div style='display:flex;gap:40px;font-size:12px;margin-top:8px;'>"
+        f"<ul style='margin:0;padding-left:16px'>{left_macro}</ul>"
+        f"<ul style='margin:0;padding-left:16px'>{right_macro}</ul>"
+        "</div>"
     )
 
-    # Macro lists
-    items=[f"<li>{lbl}: {macro_df[lbl].dropna().iloc[-1]:.2f}</li>" if lbl in macro_df and not macro_df[lbl].dropna().empty else f"<li>{lbl}: N/A</li>" for lbl in macro_series]
-    h=len(items)//2+len(items)%2
-    left=''.join(items[:h]); right=''.join(items[h:])
-
-    # Card HTML
-    card=f"""
-<div style='border:3px solid {border};border-radius:12px;padding:12px;margin:6px;background:white;'>
+    # Composition finale de la carte
+    card_html = f"""
+<div style='border:2px solid {border};border-radius:6px;padding:12px;margin:6px;overflow:hidden;'>
   <h4 style='margin:4px 0'>{name}: {price_str} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>
-  {chart}
-  <div style='display:flex;gap:40px;font-size:12px;margin-top:8px;'>
-    <ul style='margin:0;padding-left:16px'>{left}</ul>
-    <ul style='margin:0;padding-left:16px'>{right}</ul>
-  </div>
-  <div style='margin-top:8px;white-space:nowrap;overflow-x:auto;'>{badges_int}</div>
-  <div style='margin-top:8px;'>{badges_stat}</div>
-  <div style='text-align:right;font-size:13px;'>Surpondération: {'🔵'*gc}</div>
-  <div style='display:flex;gap:40px;font-size:12px;margin-top:8px;'>
-    <ul style='margin:0;padding-left:16px'>{left}</ul>
-    <ul style='margin:0;padding-left:16px'>{right}</ul>
-  </div>
+  {chart_html}
+  {badges_html}
+  {surp_html}
+  {macro_html}
 </div>
 """
-    with cols[idx%2]: html(card, height=460)
+    with cols[idx % 2]:
+        html(card_html, height=450)
 
-    # Arbitrage alerts
-    if idx%2==1 and thresholds:
-        for t in sorted(thresholds,reverse=True):
-            pairs=[(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
+    # Alertes arbitrage toutes les deux cartes
+    if idx % 2 == 1 and thresholds:
+        for t in sorted(thresholds, reverse=True):
+            pairs = [(i,j,abs(deltas[i]-deltas[j])) for i in deltas for j in deltas if i<j and abs(deltas[i]-deltas[j])>t]
             if pairs:
                 st.warning(f"Écart > {t}% détecté :")
-                for i,j,d in pairs: st.write(f"- {i} vs {j}: {d:.1f}%")
+                for i,j,d in pairs:
+                    st.write(f"- {i} vs {j}: {d:.1f}%")
 
 # FRED warning
+if not st.secrets.get('FRED_API_KEY'):
+    st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
 if not st.secrets.get('FRED_API_KEY'):
     st.warning("🔑 Clé FRED_API_KEY manquante : configurez-la dans les Secrets pour activer les indicateurs macro.")
