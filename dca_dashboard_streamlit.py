@@ -69,9 +69,10 @@ def green_count(s):
     return cnt
 
 # --- UI SIDEBAR ---
-st.sidebar.title("Paramètres")
+st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
+# VIX
 try:
     vix = yf.download('^VIX', period='3mo', progress=False)['Adj Close']
     vix_fig = px.line(vix, height=100)
@@ -81,7 +82,15 @@ try:
     st.sidebar.metric("VIX actuel", f"{vix.iloc[-1]:.2f}", delta=f"{vix.iloc[-1]-vix.iloc[-2]:+.2f}")
 except:
     st.sidebar.write("VIX non disponible")
-
+# Allocation dynamique
+st.sidebar.header("Allocation dynamique (%)")
+total = sum(green_count(load_prices()[n]) for n in etfs) or 1
+for n in etfs:
+    cnt = green_count(load_prices()[n])
+    alloc = cnt/total*50
+    arrow = '▲' if cnt>0 else ''
+    col = 'green' if cnt>0 else 'gray'
+    st.sidebar.markdown(f"**{n}:** {alloc:.1f}% <span style='color:{col}'>{arrow}{cnt}</span>", unsafe_allow_html=True)
 threshold = st.sidebar.slider("Seuil déviation (%)",5,30,15,5)
 st.sidebar.header("Seuils arbitrage")
 arb = st.sidebar.multiselect("Arbitrage > (%)", [5,10,15], [5,10,15])
@@ -112,20 +121,22 @@ for i,name in enumerate(etfs):
     fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), showlegend=False, xaxis_title='Date', yaxis_title='Valeur')
     g = fig.to_html(include_plotlyjs='cdn', full_html=False)
 
-    # badges
-    badge_html=''
-    for lbl,w in timeframes.items():
-        avg = s.tail(w).mean() if len(s)>=w else None
-        if avg is None: bg='crimson'
+        # Badges tri-couleurs interactifs
+    badge_html = ''
+    for lbl, w in timeframes.items():
+        avg = s.tail(w).mean() if len(s) >= w else None
+        if avg is None:
+            bg = 'crimson'
         else:
-            diff=(val-avg)/avg
-            bg='green' if diff<0 else 'orange' if abs(diff)<0.05 else 'crimson'
-        title=f"Moyenne {lbl}: {avg:.2f}" if avg else "Pas assez"
-        badge_html+= (
+            diff = (val - avg) / avg
+            bg = 'green' if diff < 0 else 'orange' if abs(diff) < 0.05 else 'crimson'
+        title = f"Moyenne {lbl}: {avg:.2f}" if avg is not None else "Pas assez de données"
+        badge_html += (
             f"<div style='display:inline-block;margin:2px;'>"
-            f"<button title='{title}' onclick=\"window.parent.postMessage({{'name':'{name}','lbl':'{lbl}'}},'*')\""
-            " style='background:{bg};color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;'>{lbl}</button>"
-            "</div>"
+            f"<button title=\"{title}\" onclick=\"window.parent.postMessage({{'name':'{name}','lbl':'{lbl}'}},'*')\" "
+            f"style='position:absolute;width:100%;height:100%;border:none;cursor:pointer;background:transparent;'></button>"
+            f"<span style='background:{bg};color:white;padding:4px 10px;border-radius:4px;font-size:12px;'>{lbl}</span>"
+            f"</div>"
         )
     # surp
     surp=f"<div style='text-align:right;color:#1f77b4;'>Surpondération: {'🔵'*gc[name]}</div>"
