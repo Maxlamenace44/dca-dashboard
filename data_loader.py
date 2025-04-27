@@ -7,16 +7,16 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from fredapi import Fred
 import streamlit as st
-from constants import ETFS, MACRO_SERIES
+from constants import ETFS, MACRO_SERIES, TIMEFRAMES
 
 @st.cache_data
 def load_prices() -> pd.DataFrame:
     """Télécharge les cours ajustés des ETFs sur la période nécessaire."""
     end = datetime.today()
-    max_window = max(ETFS.values()) if False else max(
-        365,
-    )
-    days = int(max_window * 1.1)
+    # On prend la plus longue fenêtre définie dans TIMEFRAMES
+    max_window = max(TIMEFRAMES.values())
+    # On récupère 1.1× cette durée (en jours)
+    days = int(max_window * 1.1) 
     start = end - timedelta(days=days)
     df = pd.DataFrame()
     for name, ticker in ETFS.items():
