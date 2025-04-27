@@ -95,7 +95,7 @@ def score_and_style(diff: float, threshold_pct: float) -> Tuple[float, str, str]
 st.sidebar.header("Paramètres de rééquilibrage")
 if st.sidebar.button("🔄 Rafraîchir"):
     st.cache_data.clear()
-threshold_pct = st.sidebar.slider("Seuil déviation (%)", 5, 30, 15, 5)
+threshold_pct = st.sidebar.slider("Seuil déviation (%)", 1, 20, 10, 5)
 arb = st.sidebar.multiselect("Seuils arbitrage > (%)", [5, 10, 15], [5, 10, 15])
 debug_surp = st.sidebar.checkbox("Afficher débogage surpondération")
 
@@ -136,6 +136,8 @@ for name, series in prices.items():
         st.sidebar.error(f"{name}: attendu 5 poids, obtenu {len(valid)}")
     surp_scores[name] = sum(valid)
 
+# Normalisation & allocation sidebar
+
 denom = sum(abs(v) for v in surp_scores.values()) or 1
 for name, score in surp_scores.items():
     alloc = score / denom * 50
@@ -175,7 +177,15 @@ for idx, (name, series) in enumerate(prices.items()):
     surp_score = sum(v['score'] for v in weights.values() if v)
 
     if debug_surp:
-        st.write(f"DEBUG {name}:", weights)
+        st.markdown(f"### DEBUG {name}")
+        for label, info in weights.items():
+            if info:
+                st.markdown(
+                    f"- **{label}**: last={info['last']:.2f}, mean={info['mean']:.2f}, "
+                    f"threshold={info['threshold']}%, diff={info['diff']:.4f}, score={info['score']:+.1f}"
+                )
+            else:
+                st.markdown(f"- **{label}**: pas assez de données")
 
     border = '#28a745' if surp_score > 0 else '#dc3545'
     key = f"win_{name}"
