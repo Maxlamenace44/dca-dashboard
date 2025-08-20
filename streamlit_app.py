@@ -8,7 +8,7 @@ from constants       import ETFS, TIMEFRAMES, MACRO_SERIES
 from data_loader     import load_prices, load_macro
 from scoring         import pct_change, score_and_style
 from plotting        import make_timeseries_fig
-from streamlit_utils import inject_css, begin_card, end_card
+from streamlit_utils import inject_css, begin_card, end_card, get_border_color
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(
@@ -82,19 +82,38 @@ for idx, (name, series) in enumerate(prices.items()):
     # Graphique Plotly
     fig = make_timeseries_fig(data, period)
 
-    # Allocation & couleur de bordure (on met en rouge ici pour reproduire votre screenshot)
-    alloc_pct   = allocations[name]
-    border_color = "crimson"  # ou calculez via get_border_color(alloc_pct)
+    # Allocation & couleur de bordure
+    alloc_pct    = allocations[name]
+    border_color = get_border_color(alloc_pct)
 
     # --- CARTE COMPLÈTE ---
     with cols[idx % 2]:
         begin_card(border_color)
 
-        # Titre + variation %
+        # Titre
         st.markdown(
-            f"**{name}: {last:.2f} "
-            f"<span style='color:{perf_color}'>{delta:+.2f}%</span>**",
-            unsafe_allow_html=True
+            f"<div style='font-size:20px;font-family:sans-serif;'>{name}</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Dernier cours
+        st.markdown(
+            f"<div style='font-size:14px;font-family:sans-serif;'>Dernier cours : {last:.2f}</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Tendance
+        arrow = "↑" if delta > 0 else "↓" if delta < 0 else "→"
+        st.markdown(
+            f"<div style='font-size:14px;font-family:sans-serif;'>Tendance : "
+            f"<span style='color:{perf_color}'>{arrow} {delta:+.2f}%</span></div>",
+            unsafe_allow_html=True,
+        )
+
+        # Allocation
+        st.markdown(
+            f"<div style='font-size:14px;font-family:sans-serif;'>Allocation : {alloc_pct:.1f}%</div>",
+            unsafe_allow_html=True,
         )
 
         # Chart
