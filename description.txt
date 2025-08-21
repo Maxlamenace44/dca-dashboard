@@ -1,0 +1,18 @@
+Dashboard DCA ETF - Description UX
+
+- Mise en page "wide" avec barre latérale gauche automatiquement ouverte.
+- Barre latérale de paramètres :
+  - Bouton "Rafraîchir" pour vider le cache.
+  - Curseur "Seuil déviation (%)" pour configurer les indicateurs de tendance.
+  - Liste déroulante "Période des graphiques" pour choisir l'horizon global (Hebdo, Mensuel, Trimestriel, Annuel, 5 ans).
+  - Message informatif libre (ex. VIX non disponible).
+  - Section "Pondération ETF" présentant un tableau :
+    - Colonne "Origine %" modifiable pour définir la pondération initiale.
+    - Colonne "Reco %" calculée automatiquement à partir des scores.
+    - Bouton "Reset" pour rétablir une répartition égale entre les ETF.
+- Zone principale en deux colonnes affichant des cartes pour chaque ETF :
+  - Titre dans un cadre coloré indiquant la dernière valeur et la variation sur 24 h.
+    La couleur du cadre reflète le score de pondération (bordure opaque, fond à 50 %).
+  - Graphique interactif de l'évolution de l'ETF sur la période choisie dans la barre latérale.
+  - Cinq badges colorés (Hebdo, Mensuel, Trimestriel, Annuel, 5 ans) indiquent le score et la tendance pour chaque horizon.
+  - Liste de macro-indicateurs affichée en bas de la carte.
