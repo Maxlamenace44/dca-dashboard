@@ -29,18 +29,31 @@ st.sidebar.write("VIX non disponible")  # exemple de ligne libre
 prices   = load_prices()
 macro_df = load_macro()
 
-# --- CALCUL DES SCORES & ALLOCATIONS ---
-raw_scores = {}
+# --- CALCUL DES SCORES (PAR PÉRIODE) & ALLOCATIONS ---
+raw_scores   = {}
+tf_scores    = {}
 for name, series in prices.items():
     s = series.dropna()
+    tf_scores[name] = {}
     if len(s) < 1:
         raw_scores[name] = 0.0
-    else:
-        last = s.iloc[-1]
-        raw_scores[name] = sum(
-            score_and_style((last - s.tail(w).mean()) / s.tail(w).mean(), threshold_pct)[0]
-            for w in TIMEFRAMES.values() if len(s) >= w
-        )
+        # Valeurs par défaut si aucune donnée
+        for lbl in TIMEFRAMES:
+            tf_scores[name][lbl] = (0.0, "↓", "crimson")
+        continue
+
+    last  = s.iloc[-1]
+    total = 0.0
+    for lbl, w in TIMEFRAMES.items():
+        if len(s) >= w:
+            m    = s.tail(w).mean()
+            diff = (last - m) / m
+            score, arrow, bg = score_and_style(diff, threshold_pct)
+        else:
+            score, arrow, bg = 0.0, "↓", "crimson"
+        tf_scores[name][lbl] = (score, arrow, bg)
+        total += score if len(s) >= w else 0.0
+    raw_scores[name] = total
 
 min_score   = min(raw_scores.values(), default=0.0)
 shift       = -min_score if min_score < 0 else 0.0
@@ -102,15 +115,9 @@ for idx, (name, series) in enumerate(prices.items()):
 
         # Badges interactifs
         badge_cols = st.columns(len(TIMEFRAMES))
-        for i, (lbl, w) in enumerate(TIMEFRAMES.items()):
+        for i, (lbl, _w) in enumerate(TIMEFRAMES.items()):
+            score, arrow, bg = tf_scores[name][lbl]
             with badge_cols[i]:
-                if len(data) >= w:
-                    m    = data.tail(w).mean()
-                    diff = (last - m) / m
-                    score, arrow, bg = score_and_style(diff, threshold_pct)
-                else:
-                    score, arrow, bg = 0, "↓", "crimson"
-
                 if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
                     st.session_state[key_win] = lbl
 

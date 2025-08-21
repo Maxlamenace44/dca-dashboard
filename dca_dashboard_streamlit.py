@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import plotly.express as px
 from fredapi import Fred
 from typing import Tuple
+from streamlit_utils import begin_card, end_card
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Dashboard DCA ETF", layout="wide", initial_sidebar_state="expanded")
@@ -154,64 +155,63 @@ for idx, (name, series) in enumerate(prices.items()):
 
     # Carte ETF
     with cols[idx % 2]:
-        st.markdown(
-            f"<div style='border:2px solid #1f77b4; border-radius:6px; padding:12px; margin:6px;'>", unsafe_allow_html=True
-        )
-        st.markdown(
-            f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True
-        )
-        # Graphique
-        key = f"win_{name}"
-        if key not in st.session_state:
-            st.session_state[key] = 'Annuel'
-        period = timeframes[st.session_state[key]]
-        df_plot = data.tail(period)
-        fig = px.line(df_plot, height=200)
-        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        with st.container():
+            begin_card("#1f77b4")
+            st.markdown(
+                f"<h4>{name}: {last:.2f} <span style='color:{perf_color}'>{delta:+.2f}%</span></h4>", unsafe_allow_html=True
+            )
+            # Graphique
+            key = f"win_{name}"
+            if key not in st.session_state:
+                st.session_state[key] = 'Annuel'
+            period = timeframes[st.session_state[key]]
+            df_plot = data.tail(period)
+            fig = px.line(df_plot, height=200)
+            fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
 
-        # Badges
-        badge_cols = st.columns(len(timeframes))
-        for i, (lbl, w) in enumerate(timeframes.items()):
-            if len(data) >= w:
-                m = data.tail(w).mean()
-                diff = (last - m) / m
-                _, arrow, bg = score_and_style(diff, threshold_pct)
-                tooltip = f"Moyenne {lbl}: {m:.2f}"
-            else:
-                arrow, bg, tooltip = '↓','crimson','N/A'
-            with badge_cols[i]:
-                if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
-                    st.session_state[key] = lbl
-                st.markdown(
-                    f"<span title='{tooltip}' style='background:{bg};color:white;padding:4px;border-radius:4px;font-size:12px;'>{lbl} {arrow}</span>", unsafe_allow_html=True
-                )
+            # Badges
+            badge_cols = st.columns(len(timeframes))
+            for i, (lbl, w) in enumerate(timeframes.items()):
+                if len(data) >= w:
+                    m = data.tail(w).mean()
+                    diff = (last - m) / m
+                    _, arrow, bg = score_and_style(diff, threshold_pct)
+                    tooltip = f"Moyenne {lbl}: {m:.2f}"
+                else:
+                    arrow, bg, tooltip = '↓','crimson','N/A'
+                with badge_cols[i]:
+                    if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
+                        st.session_state[key] = lbl
+                    st.markdown(
+                        f"<span title='{tooltip}' style='background:{bg};color:white;padding:4px;border-radius:4px;font-size:12px;'>{lbl} {arrow}</span>", unsafe_allow_html=True
+                    )
 
-        # Points de pondération
-        pts = ", ".join(
-            f"{lbl}:{weights[lbl]:+0.1f}" for lbl in timeframes if weights[lbl] is not None
-        )
-        st.markdown(f"<div style='font-size:12px;'>Points: {pts}</div>", unsafe_allow_html=True)
-        # Allocation DCA
-        alloc = allocations.get(name, 0)
-        st.markdown(
-            f"<div style='text-align:right;color:#ff7f0e;'>Allocation DCA: {alloc:.1f}%</div>", unsafe_allow_html=True
-        )
+            # Points de pondération
+            pts = ", ".join(
+                f"{lbl}:{weights[lbl]:+0.1f}" for lbl in timeframes if weights[lbl] is not None
+            )
+            st.markdown(f"<div style='font-size:12px;'>Points: {pts}</div>", unsafe_allow_html=True)
+            # Allocation DCA
+            alloc = allocations.get(name, 0)
+            st.markdown(
+                f"<div style='text-align:right;color:#ff7f0e;'>Allocation DCA: {alloc:.1f}%</div>", unsafe_allow_html=True
+            )
 
-        # Macro indicateurs
-        items = []
-        for lbl in macro_series:
-            if lbl in macro_df and not macro_df[lbl].dropna().empty:
-                val = macro_df[lbl].dropna().iloc[-1]
-                items.append(f"<li>{lbl}: {val:.2f}</li>")
-            else:
-                items.append(f"<li>{lbl}: N/A</li>")
-        half = len(items)//2 + len(items)%2
-        st.markdown(
-            "<div style='display:flex;gap:20px;'><ul style='margin:0;padding-left:16px'>"
-            f"{''.join(items[:half])}</ul><ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul></div>", unsafe_allow_html=True
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
+            # Macro indicateurs
+            items = []
+            for lbl in macro_series:
+                if lbl in macro_df and not macro_df[lbl].dropna().empty:
+                    val = macro_df[lbl].dropna().iloc[-1]
+                    items.append(f"<li>{lbl}: {val:.2f}</li>")
+                else:
+                    items.append(f"<li>{lbl}: N/A</li>")
+            half = len(items)//2 + len(items)%2
+            st.markdown(
+                "<div style='display:flex;gap:20px;'><ul style='margin:0;padding-left:16px'>"
+                f"{''.join(items[:half])}</ul><ul style='margin:0;padding-left:16px'>{''.join(items[half:])}</ul></div>", unsafe_allow_html=True
+            )
+            end_card()
 
 # Clé FRED
 if macro_df.empty:
