@@ -8,7 +8,7 @@ from constants       import ETFS, TIMEFRAMES, MACRO_SERIES
 from data_loader     import load_prices, load_macro
 from scoring         import pct_change, score_and_style
 from plotting        import make_timeseries_fig
-from streamlit_utils import inject_css, card
+from streamlit_utils import inject_css, begin_card, end_card
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(
@@ -88,49 +88,50 @@ for idx, (name, series) in enumerate(prices.items()):
 
     # --- CARTE COMPLÈTE ---
     with cols[idx % 2]:
-        with card(border_color) as c:
+        begin_card(border_color)
 
-            # Titre + variation %
-            c.markdown(
-                f"**{name}: {last:.2f} "
-                f"<span style='color:{perf_color}'>{delta:+.2f}%</span>**",
-                unsafe_allow_html=True,
-            )
+        # Titre + variation %
+        st.markdown(
+            f"**{name}: {last:.2f} "
+            f"<span style='color:{perf_color}'>{delta:+.2f}%</span>**",
+            unsafe_allow_html=True
+        )
 
-            # Chart
-            c.plotly_chart(fig, use_container_width=True)
+        # Chart
+        st.plotly_chart(fig, use_container_width=True)
 
-            # Badges interactifs
-            badge_cols = c.columns(len(TIMEFRAMES))
-            for i, (lbl, w) in enumerate(TIMEFRAMES.items()):
-                with badge_cols[i]:
-                    if len(data) >= w:
-                        m    = data.tail(w).mean()
-                        diff = (last - m) / m
-                        score, arrow, bg = score_and_style(diff, threshold_pct)
-                    else:
-                        score, arrow, bg = 0, "↓", "crimson"
-
-                    if badge_cols[i].button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
-                        st.session_state[key_win] = lbl
-
-                    badge_cols[i].markdown(
-                        f"<span style='background:{bg};color:white;"
-                        f"padding:4px;border-radius:4px;font-size:12px;'>"
-                        f"{lbl} {arrow}</span>",
-                        unsafe_allow_html=True,
-                    )
-
-            # Macro-indicateurs
-            items = []
-            for lbl in MACRO_SERIES:
-                if lbl in macro_df and not macro_df[lbl].dropna().empty:
-                    val = macro_df[lbl].dropna().iloc[-1]
-                    items.append(f"<li>{lbl}: {val:.2f}</li>")
+        # Badges interactifs
+        badge_cols = st.columns(len(TIMEFRAMES))
+        for i, (lbl, w) in enumerate(TIMEFRAMES.items()):
+            with badge_cols[i]:
+                if len(data) >= w:
+                    m    = data.tail(w).mean()
+                    diff = (last - m) / m
+                    score, arrow, bg = score_and_style(diff, threshold_pct)
                 else:
-                    items.append(f"<li>{lbl}: N/A</li>")
-            c.markdown(
-                "<ul style='columns:2;margin-top:8px;'>" + "".join(items) + "</ul>",
-                unsafe_allow_html=True,
-            )
+                    score, arrow, bg = 0, "↓", "crimson"
 
+                if st.button(f"{lbl} {arrow}", key=f"{name}_{lbl}"):
+                    st.session_state[key_win] = lbl
+
+                st.markdown(
+                    f"<span style='background:{bg};color:white;"
+                    f"padding:4px;border-radius:4px;font-size:12px;'>"
+                    f"{lbl} {arrow}</span>",
+                    unsafe_allow_html=True
+                )
+
+        # Macro-indicateurs
+        items = []
+        for lbl in MACRO_SERIES:
+            if lbl in macro_df and not macro_df[lbl].dropna().empty:
+                val = macro_df[lbl].dropna().iloc[-1]
+                items.append(f"<li>{lbl}: {val:.2f}</li>")
+            else:
+                items.append(f"<li>{lbl}: N/A</li>")
+        st.markdown(
+            "<ul style='columns:2;margin-top:8px;'>" + "".join(items) + "</ul>",
+            unsafe_allow_html=True
+        )
+
+        end_card()

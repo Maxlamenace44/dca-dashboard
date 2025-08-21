@@ -1,10 +1,8 @@
 /* Style global pour les « cartes » ETF */
 .card {
-  border: 2px solid !important;
+  border: 2px solid #1f77b4 !important;
   border-radius: 6px !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
   padding: 12px !important;
-  background-color: #fff !important;
   margin: 6px !important;
 }
 /* Pour réduire le padding interne des conteneurs Streamlit */
