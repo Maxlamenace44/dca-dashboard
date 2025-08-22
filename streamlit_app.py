@@ -88,47 +88,91 @@ adj_scores  = {k: v + shift for k, v in raw_scores.items()}
 default_pct = 100.0 / len(ETFS)
 if "origine_pcts" not in st.session_state:
     st.session_state["origine_pcts"] = {name: default_pct for name in ETFS}
+if "reco_pcts" not in st.session_state:
+    # Première recommandation basée sur les scores ajustés et la pondération d'origine.
+    weighted = {n: st.session_state["origine_pcts"][n] * adj_scores.get(n, 0.0) for n in ETFS}
+    tot = sum(weighted.values()) or 1
+    st.session_state["reco_pcts"] = {n: weighted[n] / tot * 100 for n in ETFS}
+
+
+def redistribute(weights: dict[str, float], changed: str, new_val: float) -> dict[str, float]:
+    """Répartit le delta sur les autres valeurs pour garder un total de 100 %."""
+    new_val = max(0.0, min(100.0, new_val))
+    old_val = weights[changed]
+    others = [k for k in weights if k != changed]
+    remaining = 100 - new_val
+    old_remaining = 100 - old_val
+    if not others or old_remaining <= 0:
+        weights[changed] = new_val
+        for k in others:
+            weights[k] = remaining / len(others)
+    else:
+        for k in others:
+            weights[k] = weights[k] * (remaining / old_remaining)
+        weights[changed] = new_val
+    # Correction de l'arrondi éventuel
+    total = sum(weights.values())
+    if total:
+        factor = 100 / total
+        for k in weights:
+            weights[k] *= factor
+    return weights
 
 st.sidebar.header("Pondération ETF")
 hdr = st.sidebar.columns([2, 2, 2])
 hdr[0].markdown("**ETF**")
 hdr[1].markdown("**Origine %**")
 hdr[2].markdown("**Reco %**")
-
-orig_inputs = {}
-reco_cols   = {}
+prev_orig = st.session_state["origine_pcts"].copy()
+prev_reco = st.session_state["reco_pcts"].copy()
+orig_inputs: dict[str, float] = {}
+reco_inputs: dict[str, float] = {}
 for name in ETFS:
     col1, col2, col3 = st.sidebar.columns([2, 2, 2])
     col1.markdown(name)
-    # Champ numérique avec pas de 1% pour ajuster la pondération d'origine
-    val = col2.number_input(
+    o_val = col2.number_input(
         "",
         key=f"orig_{name}",
         min_value=0.0,
         max_value=100.0,
-        step=1.0,
+        step=0.5,
         format="%.2f",
         value=st.session_state["origine_pcts"][name],
     )
-    st.session_state["origine_pcts"][name] = val
-    orig_inputs[name] = val
-    reco_cols[name]   = col3.empty()
+    r_val = col3.number_input(
+        "",
+        key=f"reco_{name}",
+        min_value=0.0,
+        max_value=100.0,
+        step=0.5,
+        format="%.2f",
+        value=st.session_state["reco_pcts"][name],
+    )
+    orig_inputs[name] = o_val
+    reco_inputs[name] = r_val
 
-# Calcul de la recommandation : pondération proportionnelle au score ajusté
-weighted = {k: orig_inputs[k] * adj_scores.get(k, 0.0) for k in ETFS}
-total_w  = sum(weighted.values())
-for name in ETFS:
-    if total_w == 0:
-        reco_pct = orig_inputs[name]
-    else:
-        reco_pct = weighted[name] / total_w * 100
-    reco_cols[name].markdown(f"{reco_pct:.2f}%")
-
-# Bouton pour réinitialiser les valeurs d'origine à parts égales
-if st.sidebar.button("Reset"):
-    for name in ETFS:
-        st.session_state["origine_pcts"][name] = default_pct
+# Détection des changements et redistribution pour conserver 100 %
+changed_orig = [n for n in ETFS if abs(orig_inputs[n] - prev_orig[n]) > 1e-9]
+if changed_orig:
+    key = changed_orig[0]
+    st.session_state["origine_pcts"] = redistribute(prev_orig, key, orig_inputs[key])
+    weighted = {n: st.session_state["origine_pcts"][n] * adj_scores.get(n, 0.0) for n in ETFS}
+    tot = sum(weighted.values()) or 1
+    st.session_state["reco_pcts"] = {n: weighted[n] / tot * 100 for n in ETFS}
     st.experimental_rerun()
+
+changed_reco = [n for n in ETFS if abs(reco_inputs[n] - prev_reco[n]) > 1e-9]
+if changed_reco:
+    key = changed_reco[0]
+    st.session_state["reco_pcts"] = redistribute(prev_reco, key, reco_inputs[key])
+    st.experimental_rerun()
+
+tot_orig = sum(st.session_state["origine_pcts"].values())
+tot_reco = sum(st.session_state["reco_pcts"].values())
+if abs(tot_orig - 100) > 0.01:
+    st.sidebar.error(f"Origine total {tot_orig:.2f}% (Δ {tot_orig-100:+.2f}%)")
+if abs(tot_reco - 100) > 0.01:
+    st.sidebar.error(f"Reco total {tot_reco:.2f}% (Δ {tot_reco-100:+.2f}%)")
 
 # --- AFFICHAGE PRINCIPAL ---
 st.title("Dashboard DCA ETF")
@@ -197,3 +241,9 @@ for idx, (name, series) in enumerate(prices.items()):
         )
 
         end_card()
+
+# Avertissement légal sous l'ensemble des cartes
+st.markdown(
+    "<p style='font-size:12px;'>⚠️ Investir comporte des risques. Les performances passées ne préjugent pas des performances futures.</p>",
+    unsafe_allow_html=True,
+)
