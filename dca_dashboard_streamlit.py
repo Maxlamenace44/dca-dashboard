@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import plotly.express as px
 from fredapi import Fred
 from typing import Tuple
-from streamlit_utils import begin_card, end_card
+from dca_dashboard.streamlit_utils import begin_card, end_card
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Dashboard DCA ETF", layout="wide", initial_sidebar_state="expanded")

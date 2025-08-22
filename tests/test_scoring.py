@@ -10,11 +10,7 @@ def test_pct_change_two_points():
     assert round(pct_change(s), 2) == 10.0
 
 def test_score_and_style():
-    s1 = score_and_style(-0.2, 10)
-    assert s1[0] == 1.0
-    s2 = score_and_style(-0.05, 10)
-    assert s2[0] == 0.5
-    s3 = score_and_style(0.05, 10)
-    assert s3[0] == -0.5
-    s4 = score_and_style(0.2, 10)
-    assert s4[0] == -1.0
+    assert score_and_style(-0.2, 10) == (-1.0, '↓', 'red')
+    assert score_and_style(-0.05, 10) == (-0.5, '↘', 'orange')
+    assert score_and_style(0.05, 10) == (0.5, '↗', '#90ee90')
+    assert score_and_style(0.2, 10) == (1.0, '↑', '#006400')
