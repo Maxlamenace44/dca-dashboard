@@ -12,7 +12,8 @@ Dashboard DCA ETF - Description UX
     - Ligne de total affichant la somme de chaque colonne.
     - Avertissement si la somme d'une colonne diffère de 100 %.
 - Zone principale en deux colonnes affichant des cartes pour chaque ETF :
-  - Titre dans un cadre coloré indiquant la dernière valeur et la variation sur 24 h.
+  - Titre dans un cadre coloré indiquant la dernière valeur, la variation sur 24 h
+    et le score global cumulé (format « Score = x.x »).
     La couleur du cadre reflète le score de pondération (bordure opaque, fond à 50 %).
   - Graphique interactif de l'évolution de l'ETF sur la période choisie dans la barre latérale.
   - Cinq badges colorés (Hebdo, Mensuel, Trimestriel, Annuel, 5 ans) indiquent le score et la tendance pour chaque horizon.
