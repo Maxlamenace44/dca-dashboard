@@ -239,7 +239,7 @@ for idx, (name, series) in enumerate(prices.items()):
             score, arrow, bg = tf_scores[name][lbl]
             with badge_cols[i]:
                 st.markdown(
-                    f"<span style='background:{bg};color:white;padding:4px;border-radius:4px;font-size:12px;display:block;text-align:center;'>"
+                    f"<span style='background:{bg};color:black;padding:4px;border-radius:4px;font-size:12px;display:block;text-align:center;'>"
                     f"{lbl} {arrow} {score:+.1f}"
                     "</span>",
                     unsafe_allow_html=True,
@@ -266,28 +266,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Note explicative sur le modèle de pondération
+# Note pédagogique sur la logique contrariante du scoring
 st.markdown(
     """
-    **Modèle de calcul du score de pondération**
-
-    **Comparaison à la moyenne mobile**
-    Pour chaque ETF et pour chaque période (Hebdo, Mensuel, Trimestriel, Annuel, 5 ans),
-    on compare le dernier cours à la moyenne des `w` derniers jours et on calcule l’écart relatif `diff`.
-
-    **Conversion de l’écart en score unitaire**
-    L’écart `diff` est converti en score (+1, +0.5, –0.5, –1) via `score_and_style`,
-    selon qu’il dépasse ou non le seuil `threshold_pct` défini dans la barre latérale.
-    Chaque score est aussi associé à une couleur et une flèche indicative.
-
-    **Somme des scores par ETF**
-    Les scores unitaires obtenus sur toutes les périodes sont additionnés pour former `raw_scores` de l’ETF.
-    On applique ensuite un décalage pour que le score minimum devienne zéro,
-    garantissant que tous les scores ajustés (`adj_scores`) soient positifs ou nuls.
-
-    **Pondération recommandée**
-    Les pourcentages recommandés sont calculés en multipliant la pondération d’origine de chaque ETF par son `adj_score`,
-    puis en normalisant pour que la somme fasse 100 %.
+    <p style='font-size:14px;'>
+    Nous utilisons un système de scoring contrariant pour pondérer les ETF d’un portefeuille.<br><br>
+    Quand un ETF est sous sa moyenne mobile (écart négatif), nous considérons qu’il est décoté et a donc un potentiel de rebond. Plus l’écart est négatif, plus le score est élevé → allocation renforcée.<br><br>
+    Quand un ETF est au-dessus de sa moyenne mobile (écart positif), nous considérons qu’il est surévalué et a donc moins de potentiel. Plus l’écart est positif, plus le score est négatif → allocation réduite.<br><br>
+    En pratique, nous comparons le dernier cours à la moyenne mobile de différentes périodes (hebdo, mensuelle, trimestrielle, annuelle, 5 ans). Chaque comparaison génère un score unitaire, puis on somme pour obtenir le score global. Ce score sert de base à la pondération dynamique des ETF.
+    </p>
     """,
     unsafe_allow_html=True,
 )
