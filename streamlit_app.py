@@ -4,6 +4,7 @@ Dashboard DCA ETF avec cartes « full-block » encadrées.
 """
 
 import streamlit as st
+import pandas as pd
 from dca_dashboard.constants       import ETFS, TIMEFRAMES, MACRO_SERIES
 from dca_dashboard.data_loader     import load_prices, load_macro
 from dca_dashboard.scoring         import pct_change, score_and_style
@@ -69,14 +70,15 @@ for name, series in prices.items():
     last  = s.iloc[-1]
     total = 0.0
     for lbl, w in TIMEFRAMES.items():
-        if len(s) >= w:
-            m    = s.tail(w).mean()
+        window = s[s.index >= (s.index[-1] - pd.Timedelta(days=w))]
+        if not window.empty:
+            m    = window.mean()
             diff = (last - m) / m
             score, arrow, bg = score_and_style(diff, threshold_pct)
+            total += score
         else:
             score, arrow, bg = 0.0, "↓", "crimson"
         tf_scores[name][lbl] = (score, arrow, bg)
-        total += score if len(s) >= w else 0.0
     raw_scores[name] = total
 
 min_score   = min(raw_scores.values(), default=0.0)
@@ -221,11 +223,11 @@ for idx, (name, series) in enumerate(prices.items()):
     with cols[idx % 2]:
         begin_card()
 
-        # Titre + variation % dans un cadre coloré
+        # Titre + variation % + score global dans un cadre coloré
         st.markdown(
             f"<div style='border:2px solid {border_color};background-color:{bg_color};border-radius:4px;padding:4px;margin-bottom:8px;'>"
             f"<strong>{name}: {last:.2f} "
-            f"<span style='color:{perf_color}'>{delta:+.2f}%</span></strong>"
+            f"<span style='color:{perf_color}'>{delta:+.2f}%</span> | Score = {raw_scores[name]:+.1f}</strong>"
             "</div>",
             unsafe_allow_html=True,
         )
