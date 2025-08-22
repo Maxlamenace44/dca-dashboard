@@ -27,6 +27,15 @@ FRED_API_KEY = "VOTRE_CLE_API_FRED"
 streamlit run dca_dashboard/app.py
 ```
 
+## Méthode de scoring contrariante
+
+Le tableau de bord pondère les ETF à l'aide d'un score calculé sur cinq horizons (Hebdo, Mensuel, Trimestriel, Annuel et 5 ans). Pour chaque période, on compare le dernier cours à la moyenne mobile correspondante :
+
+- **Sous la moyenne** → l'ETF est jugé décoté et reçoit un **score positif** (vert) reflétant un potentiel de rebond.
+- **Au-dessus de la moyenne** → l'ETF est considéré surévalué et reçoit un **score négatif** (orange ou rouge).
+
+Les cinq scores sont additionnés puis normalisés pour générer une pondération recommandée. Cette approche contrariante favorise les ETF en sous-performance historique et réduit l'exposition à ceux en surperformance.
+
 ## Structure du projet
 
 ```

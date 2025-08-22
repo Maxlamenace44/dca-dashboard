@@ -18,4 +18,8 @@ Dashboard DCA ETF - Description UX
   - Cinq badges colorés (Hebdo, Mensuel, Trimestriel, Annuel, 5 ans) indiquent le score et la tendance pour chaque horizon.
   - Liste de macro-indicateurs affichée en bas de la carte.
   - Message légal sous l'ensemble des cartes (texte agrandi) : "⚠️ Investir comporte des risques. Les performances passées ne préjugent pas des performances futures."
-  - Note pédagogique rappelant la logique contrariante du scoring et la construction du score global.
+  - Note pédagogique détaillant la méthode de scoring contrariante :
+    - comparaison du dernier cours à la moyenne mobile de chaque horizon ;
+    - écart négatif (prix sous la moyenne) → score positif et couleur verte ;
+    - écart positif (prix au-dessus de la moyenne) → score négatif et couleur orange/rouge ;
+    - somme des cinq scores, ajustée pour produire la pondération recommandée.

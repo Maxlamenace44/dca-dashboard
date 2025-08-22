@@ -19,13 +19,14 @@ def score_and_style(diff: float, threshold_pct: float) -> Tuple[float, str, str]
     - couleur pastel associée
     """
     t = threshold_pct / 100.0
-    if diff >= t:
-        return 1.0, '↑', '#66BB6A'     # vert pastel foncé
-    elif diff > 0:
-        return 0.5, '↗', '#A5D6A7'     # vert clair pastel
+    if diff <= -t:
+        # Prix largement sous la moyenne -> score positif
+        return 1.0, '↓', '#66BB6A'     # vert pastel foncé
+    elif diff < 0:
+        return 0.5, '↘', '#A5D6A7'     # vert clair pastel
     elif diff == 0:
         return 0.0, '→', '#90CAF9'     # bleu clair pastel
-    elif diff > -t:
-        return -0.5, '↘', '#FFB74D'    # orange pastel
+    elif diff < t:
+        return -0.5, '↗', '#FFB74D'    # orange pastel
     else:
-        return -1.0, '↓', '#E57373'    # rouge pastel
+        return -1.0, '↑', '#E57373'    # rouge pastel
